@@ -588,9 +588,9 @@ Tileset* Project::loadTileset(QString label) {
     tileset->padding = values->value(2);
     tileset->tiles_label = values->value(3);
     tileset->palettes_label = values->value(4);
-    tileset->metatiles_label = values->value(5);
-    tileset->metatile_attrs_label = values->value(6);
-    tileset->callback_label = values->value(7);
+    tileset->metatiles_label = values->value(6);
+    tileset->metatile_attrs_label = values->value(7);
+    tileset->callback_label = values->value(8);
 
     loadTilesetAssets(tileset);
 
