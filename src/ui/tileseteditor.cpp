@@ -5,6 +5,7 @@
 #include <QDebug>
 #include <QMessageBox>
 #include <QDialogButtonBox>
+#include <QCloseEvent>
 
 TilesetEditor::TilesetEditor(Project *project, QString primaryTilesetLabel, QString secondaryTilesetLabel, QWidget *parent) :
     QMainWindow(parent),
@@ -201,11 +202,13 @@ void TilesetEditor::onMetatileLayerTileChanged(int x, int y) {
     for (int j = 0; j < dimensions.y(); j++) {
         for (int i = 0; i < dimensions.x(); i++) {
             int tileIndex = ((x + i) / 2 * 4) + ((y + j) * 2) + ((x + i) % 2);
-            Tile *tile = &(*this->metatile->tiles)[tileIndex];
-            tile->tile = tiles.at(selectedTileIndex).tile;
-            tile->xflip = tiles.at(selectedTileIndex).xflip;
-            tile->yflip = tiles.at(selectedTileIndex).yflip;
-            tile->palette = tiles.at(selectedTileIndex).palette;
+            if (tileIndex < 8) {
+                Tile *tile = &(*this->metatile->tiles)[tileIndex];
+                tile->tile = tiles.at(selectedTileIndex).tile;
+                tile->xflip = tiles.at(selectedTileIndex).xflip;
+                tile->yflip = tiles.at(selectedTileIndex).yflip;
+                tile->palette = tiles.at(selectedTileIndex).palette;
+            }
             selectedTileIndex++;
         }
     }
@@ -372,27 +375,33 @@ void TilesetEditor::importTilesetTiles(Tileset *tileset, bool primary) {
     }
 
     this->project->loadTilesetTiles(tileset, image);
-    this->project->loadTilesetMetatiles(tileset);
     this->refresh();
     this->hasUnsavedChanges = true;
 }
 
 void TilesetEditor::closeEvent(QCloseEvent *event)
 {
-    bool close = true;
     if (this->hasUnsavedChanges) {
-        QMessageBox::StandardButton result = QMessageBox::question(this, "porymap",
-                                                                    "Discard unsaved Tileset changes?",
-                                                                    QMessageBox::No | QMessageBox::Yes,
-                                                                    QMessageBox::Yes);
-        close = result == QMessageBox::Yes;
-    }
+        QMessageBox::StandardButton result = QMessageBox::question(
+            this,
+            "porymap",
+            "Tileset has been modified, save changes?",
+            QMessageBox::No | QMessageBox::Yes | QMessageBox::Cancel,
+            QMessageBox::Yes);
 
-    if (close) {
+        if (result == QMessageBox::Yes) {
+            this->on_actionSave_Tileset_triggered();
+            event->accept();
+            emit closed();
+        } else if (result == QMessageBox::No) {
+            event->accept();
+            emit closed();
+        } else if (result == QMessageBox::Cancel) {
+            event->ignore();
+        }
+    } else {
         event->accept();
         emit closed();
-    } else {
-        event->ignore();
     }
 }
 
