@@ -11,7 +11,6 @@
 
 #include <QPixmap>
 #include <QObject>
-#include <QDebug>
 #include <QGraphicsPixmapItem>
 #include <math.h>
 
@@ -38,6 +37,9 @@ public:
     QString type;
     QString unknown;
     QString show_location;
+    QString allowRunning;
+    QString allowBiking;
+    QString allowEscapeRope;
     QString battle_scene;
     MapLayout *layout;
     bool isPersistedToFile = true;

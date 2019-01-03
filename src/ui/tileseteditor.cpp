@@ -1,8 +1,8 @@
 #include "tileseteditor.h"
 #include "ui_tileseteditor.h"
+#include "log.h"
 #include "imageproviders.h"
 #include <QFileDialog>
-#include <QDebug>
 #include <QMessageBox>
 #include <QDialogButtonBox>
 #include <QCloseEvent>
@@ -17,6 +17,18 @@ TilesetEditor::TilesetEditor(Project *project, QString primaryTilesetLabel, QStr
 TilesetEditor::~TilesetEditor()
 {
     delete ui;
+    delete metatileSelector;
+    delete tileSelector;
+    delete metatileLayersItem;
+    delete paletteEditor;
+    delete metatile;
+    delete primaryTileset;
+    delete secondaryTileset;
+    delete metatilesScene;
+    delete tilesScene;
+    delete selectedTilePixmapItem;
+    delete selectedTileScene;
+    delete metatileLayersScene;
 }
 
 void TilesetEditor::init(Project *project, QString primaryTilesetLabel, QString secondaryTilesetLabel) {
@@ -328,7 +340,7 @@ void TilesetEditor::importTilesetTiles(Tileset *tileset, bool primary) {
         return;
     }
 
-    qDebug() << QString("Importing %1 tileset tiles '%2'").arg(descriptor).arg(filepath);
+    logInfo(QString("Importing %1 tileset tiles '%2'").arg(descriptor).arg(filepath));
 
     // Validate image dimensions.
     QImage image = QImage(filepath);
@@ -392,16 +404,13 @@ void TilesetEditor::closeEvent(QCloseEvent *event)
         if (result == QMessageBox::Yes) {
             this->on_actionSave_Tileset_triggered();
             event->accept();
-            emit closed();
         } else if (result == QMessageBox::No) {
             event->accept();
-            emit closed();
         } else if (result == QMessageBox::Cancel) {
             event->ignore();
         }
     } else {
         event->accept();
-        emit closed();
     }
 }
 

@@ -11,7 +11,7 @@ greaterThan(QT_MAJOR_VERSION, 4): QT += widgets
 TARGET = porymap
 TEMPLATE = app
 RC_ICONS = resources/icons/porymap-icon-1.ico
-ICON = resources/icons/porymap-icon-1.ico
+ICON = resources/icons/porymap.icns
 QMAKE_CXXFLAGS += -std=c++11
 
 SOURCES += src/core/block.cpp \
@@ -46,11 +46,13 @@ SOURCES += src/core/block.cpp \
     src/ui/tileseteditor.cpp \
     src/ui/tileseteditormetatileselector.cpp \
     src/ui/tileseteditortileselector.cpp \
+    src/config.cpp \
     src/editor.cpp \
     src/main.cpp \
     src/mainwindow.cpp \
     src/project.cpp \
-    src/settings.cpp
+    src/settings.cpp \
+    src/log.cpp
 
 HEADERS  += include/core/block.h \
     include/core/blockdata.h \
@@ -86,10 +88,12 @@ HEADERS  += include/core/block.h \
     include/ui/tileseteditor.h \
     include/ui/tileseteditormetatileselector.h \
     include/ui/tileseteditortileselector.h \
+    include/config.h \
     include/editor.h \
     include/mainwindow.h \
     include/project.h \
-    include/settings.h
+    include/settings.h \
+    include/log.h
 
 FORMS    += forms/mainwindow.ui \
     forms/eventpropertiesframe.ui \
