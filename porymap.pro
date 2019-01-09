@@ -22,10 +22,12 @@ SOURCES += src/core/block.cpp \
     src/core/map.cpp \
     src/core/maplayout.cpp \
     src/core/metatile.cpp \
+    src/core/metatileparser.cpp \
     src/core/paletteparser.cpp \
     src/core/parseutil.cpp \
     src/core/tile.cpp \
     src/core/tileset.cpp \
+    src/ui/aboutporymap.cpp \
     src/ui/bordermetatilespixmapitem.cpp \
     src/ui/collisionpixmapitem.cpp \
     src/ui/connectionpixmapitem.cpp \
@@ -38,6 +40,7 @@ SOURCES += src/core/block.cpp \
     src/ui/mapsceneeventfilter.cpp \
     src/ui/metatilelayersitem.cpp \
     src/ui/metatileselector.cpp \
+    src/ui/movablerect.cpp \
     src/ui/movementpermissionsselector.cpp \
     src/ui/neweventtoolbutton.cpp \
     src/ui/noscrollcombobox.cpp \
@@ -47,6 +50,7 @@ SOURCES += src/core/block.cpp \
     src/ui/tileseteditor.cpp \
     src/ui/tileseteditormetatileselector.cpp \
     src/ui/tileseteditortileselector.cpp \
+    src/ui/newmappopup.cpp \
     src/config.cpp \
     src/editor.cpp \
     src/main.cpp \
@@ -65,10 +69,12 @@ HEADERS  += include/core/block.h \
     include/core/mapconnection.h \
     include/core/maplayout.h \
     include/core/metatile.h \
+    include/core/metatileparser.h \
     include/core/paletteparser.h \
     include/core/parseutil.h \
     include/core/tile.h \
     include/core/tileset.h \
+    include/ui/aboutporymap.h \
     include/ui/bordermetatilespixmapitem.h \
     include/ui/collisionpixmapitem.h \
     include/ui/connectionpixmapitem.h \
@@ -81,6 +87,7 @@ HEADERS  += include/core/block.h \
     include/ui/mapsceneeventfilter.h \
     include/ui/metatilelayersitem.h \
     include/ui/metatileselector.h \
+    include/ui/movablerect.h \
     include/ui/movementpermissionsselector.h \
     include/ui/neweventtoolbutton.h \
     include/ui/noscrollcombobox.h \
@@ -90,6 +97,7 @@ HEADERS  += include/core/block.h \
     include/ui/tileseteditor.h \
     include/ui/tileseteditormetatileselector.h \
     include/ui/tileseteditortileselector.h \
+    include/ui/newmappopup.h \
     include/config.h \
     include/editor.h \
     include/mainwindow.h \
@@ -100,7 +108,9 @@ HEADERS  += include/core/block.h \
 FORMS    += forms/mainwindow.ui \
     forms/eventpropertiesframe.ui \
     forms/tileseteditor.ui \
-    forms/paletteeditor.ui
+    forms/paletteeditor.ui \
+    forms/newmappopup.ui \
+    forms/aboutporymap.ui
 
 RESOURCES += \
     resources/images.qrc

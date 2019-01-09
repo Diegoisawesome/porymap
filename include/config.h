@@ -3,6 +3,7 @@
 
 #include <QString>
 #include <QObject>
+#include <QByteArrayList>
 
 enum MapSortOrder {
     Group   =  0,
@@ -32,17 +33,25 @@ public:
         this->mapSortOrder = MapSortOrder::Group;
         this->prettyCursors = true;
         this->collisionOpacity = 50;
+        this->showPlayerView = false;
+        this->showCursorTile = true;
     }
     void setRecentProject(QString project);
     void setRecentMap(QString map);
     void setMapSortOrder(MapSortOrder order);
     void setPrettyCursors(bool enabled);
+    void setGeometry(QByteArray, QByteArray, QByteArray, QByteArray, QByteArray);
     void setCollisionOpacity(int opacity);
+    void setShowPlayerView(bool enabled);
+    void setShowCursorTile(bool enabled);
     QString getRecentProject();
     QString getRecentMap();
     MapSortOrder getMapSortOrder();
     bool getPrettyCursors();
+    QMap<QString, QByteArray> getGeometry();
     int getCollisionOpacity();
+    bool getShowPlayerView();
+    bool getShowCursorTile();
 protected:
     QString getConfigFilepath();
     void parseConfigKeyValue(QString key, QString value);
@@ -51,15 +60,25 @@ protected:
 private:
     QString recentProject;
     QString recentMap;
+    QString stringFromByteArray(QByteArray);
+    QByteArray bytesFromString(QString);
     MapSortOrder mapSortOrder;
     bool prettyCursors;
+    QByteArray windowGeometry;
+    QByteArray windowState;
+    QByteArray mapSplitterState;
+    QByteArray eventsSlpitterState;
+    QByteArray mainSplitterState;
     int collisionOpacity;
+    bool showPlayerView;
+    bool showCursorTile;
 };
 
 extern PorymapConfig porymapConfig;
 
 enum BaseGameVersion {
     pokeruby,
+    pokefirered,
     pokeemerald,
 };
 

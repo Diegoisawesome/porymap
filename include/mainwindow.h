@@ -16,6 +16,7 @@
 #include "editor.h"
 #include "tileseteditor.h"
 #include "filterchildrenproxymodel.h"
+#include "newmappopup.h"
 
 namespace Ui {
 class MainWindow;
@@ -47,7 +48,10 @@ private slots:
     void onMapChanged(Map *map);
     void onMapNeedsRedrawing();
     void onTilesetsSaved(QString, QString);
+    void openNewMapPopupWindow(int, QVariant);
+    void onNewMapCreated();
 
+    void on_action_NewMap_triggered();
     void on_action_Save_triggered();
     void on_tabWidget_2_currentChanged(int index);
     void on_action_Exit_triggered();
@@ -70,6 +74,8 @@ private slots:
     void on_actionZoom_In_triggered();
     void on_actionZoom_Out_triggered();
     void on_actionBetter_Cursors_triggered();
+    void on_actionPlayer_View_Rectangle_triggered();
+    void on_actionCursor_Tile_Outline_triggered();
     void on_actionPencil_triggered();
     void on_actionPointer_triggered();
     void on_actionFlood_Fill_triggered();
@@ -98,6 +104,8 @@ private slots:
 
     void onOpenMapListContextMenu(const QPoint &point);
     void onAddNewMapToGroupClick(QAction* triggeredAction);
+    void onAddNewMapToAreaClick(QAction* triggeredAction);
+    void onAddNewMapToLayoutClick(QAction* triggeredAction);
     void onTilesetChanged(QString);
     void currentMetatilesSelectionChanged();
 
@@ -145,10 +153,17 @@ private slots:
 
     void on_horizontalSlider_CollisionTransparency_valueChanged(int value);
 
+    void on_toolButton_ExpandAll_clicked();
+
+    void on_toolButton_CollapseAll_clicked();
+
+    void on_actionAbout_Porymap_triggered();
+
 private:
     Ui::MainWindow *ui;
     TilesetEditor *tilesetEditor = nullptr;
     FilterChildrenProxyModel *mapListProxyModel;
+    NewMapPopup *newmapprompt = nullptr;
     QStandardItemModel *mapListModel;
     QList<QStandardItem*> *mapGroupItemsList;
     QMap<QString, QModelIndex> mapListIndexes;
@@ -200,6 +215,7 @@ private:
     void initMapSortOrder();
     void setProjectSpecificUIVisibility();
     void loadUserSettings();
+    void restoreWindowState();
     bool openRecentProject();
     void updateTilesetEditor();
     QString getEventGroupFromTabWidget(QWidget *tab);
