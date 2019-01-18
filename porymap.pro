@@ -19,6 +19,7 @@ SOURCES += src/core/block.cpp \
     src/core/event.cpp \
     src/core/heallocation.cpp \
     src/core/historyitem.cpp \
+    src/core/imageexport.cpp \
     src/core/map.cpp \
     src/core/maplayout.cpp \
     src/core/metatile.cpp \
@@ -32,6 +33,7 @@ SOURCES += src/core/block.cpp \
     src/ui/collisionpixmapitem.cpp \
     src/ui/connectionpixmapitem.cpp \
     src/ui/currentselectedmetatilespixmapitem.cpp \
+    src/ui/cursortilerect.cpp \
     src/ui/eventpropertiesframe.cpp \
     src/ui/filterchildrenproxymodel.cpp \
     src/ui/graphicsview.cpp \
@@ -65,6 +67,7 @@ HEADERS  += include/core/block.h \
     include/core/heallocation.h \
     include/core/history.h \
     include/core/historyitem.h \
+    include/core/imageexport.h \
     include/core/map.h \
     include/core/mapconnection.h \
     include/core/maplayout.h \
@@ -79,6 +82,7 @@ HEADERS  += include/core/block.h \
     include/ui/collisionpixmapitem.h \
     include/ui/connectionpixmapitem.h \
     include/ui/currentselectedmetatilespixmapitem.h \
+    include/ui/cursortilerect.h \
     include/ui/eventpropertiesframe.h \
     include/ui/filterchildrenproxymodel.h \
     include/ui/graphicsview.h \
