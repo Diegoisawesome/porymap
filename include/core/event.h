@@ -4,6 +4,7 @@
 #include <QString>
 #include <QPixmap>
 #include <QMap>
+#include <QJsonObject>
 
 class EventType
 {
@@ -22,6 +23,7 @@ class Event
 {
 public:
     Event();
+    Event(QJsonObject, QString);
 public:
     int x() {
         return getInt("x");
@@ -64,18 +66,22 @@ public:
     static Event* createNewHiddenItemEvent();
     static Event* createNewSecretBaseEvent();
 
-    QString buildObjectEventMacro(int);
-    QString buildWarpEventMacro(QMap<QString, QString>*);
-    QString buildTriggerEventMacro();
-    QString buildWeatherTriggerEventMacro();
-    QString buildSignEventMacro();
-    QString buildHiddenItemEventMacro();
-    QString buildSecretBaseEventMacro();
+    QJsonObject buildObjectEventJSON();
+    QJsonObject buildWarpEventJSON(QMap<QString, QString>*);
+    QJsonObject buildTriggerEventJSON();
+    QJsonObject buildWeatherTriggerEventJSON();
+    QJsonObject buildSignEventJSON();
+    QJsonObject buildHiddenItemEventJSON();
+    QJsonObject buildSecretBaseEventJSON();
     void setPixmapFromSpritesheet(QImage, int, int);
     int getPixelX();
     int getPixelY();
+    QMap<QString, bool> getExpectedFields();
+    void readCustomValues(QJsonObject values);
+    void addCustomValuesTo(QJsonObject *obj);
 
     QMap<QString, QString> values;
+    QMap<QString, QString> customValues;
     QPixmap pixmap;
     int spriteWidth;
     int spriteHeight;

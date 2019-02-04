@@ -74,6 +74,7 @@ public:
     void updatePrimaryTileset(QString tilesetLabel, bool forceLoad = false);
     void updateSecondaryTileset(QString tilesetLabel, bool forceLoad = false);
     void toggleBorderVisibility(bool visible);
+    void updateCustomMapHeaderValues(QTableWidget *);
     Tileset *getCurrentMapPrimaryTileset();
 
     DraggablePixmapItem *addMapEvent(Event *event);
@@ -231,6 +232,12 @@ public:
                 combo->addItem(value);
                 combo->setCurrentText(value);
             }
+        });
+    }
+    void bindToUserData(QComboBox *combo, QString key) {
+        connect(combo, static_cast<void (QComboBox::*)(int)>(&QComboBox::currentIndexChanged),
+                this, [this, combo, key](int index) {
+            this->event->put(key, combo->itemData(index).toString());
         });
     }
 

@@ -17,6 +17,13 @@ Event::Event()
     this->usingSprite = false;
 }
 
+Event::Event(QJsonObject obj, QString type)
+{
+    Event();
+    this->put("event_type", type);
+    this->readCustomValues(obj);
+}
+
 Event* Event::createNewEvent(QString event_type, QString map_name)
 {
     Event *event = new Event;
@@ -56,7 +63,7 @@ Event* Event::createNewObjectEvent()
     event->put("script_label", "NULL");
     event->put("event_flag", "0");
     event->put("replacement", "0");
-    event->put("is_trainer", "FALSE");
+    event->put("trainer_type", "0");
     event->put("sight_radius_tree_id", 0);
     return event;
 }
@@ -139,100 +146,199 @@ int Event::getPixelY()
     return (this->y() * 16) - qMax(0, this->spriteHeight - 16);
 }
 
-QString Event::buildObjectEventMacro(int item_index)
+QMap<QString, bool> Event::getExpectedFields()
 {
-    int radius_x = this->getInt("radius_x");
-    int radius_y = this->getInt("radius_y");
-    uint16_t x = this->getU16("x");
-    uint16_t y = this->getU16("y");
+    QString type = this->get("event_type");
+    if (type == EventType::Object) {
+        return QMap<QString, bool> {
+            {"graphics_id", true},
+            {"x", true},
+            {"y", true},
+            {"elevation", true},
+            {"movement_type", true},
+            {"movement_range_x", true},
+            {"movement_range_y", true},
+            {"trainer_type", true},
+            {"trainer_sight_or_berry_tree_id", true},
+            {"script", true},
+            {"flag", true},
+        };
+    } else if (type == EventType::Warp) {
+        return QMap<QString, bool> {
+            {"x", true},
+            {"y", true},
+            {"elevation", true},
+            {"dest_map", true},
+            {"dest_warp_id", true},
+        };
+    } else if (type == EventType::Trigger) {
+        return QMap<QString, bool> {
+            {"type", true},
+            {"x", true},
+            {"y", true},
+            {"elevation", true},
+            {"var", true},
+            {"var_value", true},
+            {"script", true},
+        };
+    } else if (type == EventType::WeatherTrigger) {
+        return QMap<QString, bool> {
+            {"type", true},
+            {"x", true},
+            {"y", true},
+            {"elevation", true},
+            {"weather", true},
+        };
+    } else if (type == EventType::Sign) {
+        return QMap<QString, bool> {
+            {"type", true},
+            {"x", true},
+            {"y", true},
+            {"elevation", true},
+            {"player_facing_dir", true},
+            {"script", true},
+        };
+    } else if (type == EventType::HiddenItem) {
+        return QMap<QString, bool> {
+            {"type", true},
+            {"x", true},
+            {"y", true},
+            {"elevation", true},
+            {"item", true},
+            {"flag", true},
+        };
+    } else if (type == EventType::SecretBase) {
+        return QMap<QString, bool> {
+            {"type", true},
+            {"x", true},
+            {"y", true},
+            {"elevation", true},
+            {"secret_base_id", true},
+        };
+    } else {
+        return QMap<QString, bool>();
+    }
+};
 
-    QString text = "";
-    text += QString("\tobject_event %1").arg(item_index + 1);
-    text += QString(", %1").arg(this->get("sprite"));
-    text += QString(", %1").arg(this->get("replacement"));
-    text += QString(", %1").arg(x);
-    text += QString(", %1").arg(y);
-    text += QString(", %1").arg(this->get("elevation"));
-    text += QString(", %1").arg(this->get("movement_type"));
-    text += QString(", %1").arg(radius_x);
-    text += QString(", %1").arg(radius_y);
-    text += QString(", %1").arg(this->get("is_trainer"));
-    text += QString(", %1").arg(this->get("sight_radius_tree_id"));
-    text += QString(", %1").arg(this->get("script_label"));
-    text += QString(", %1").arg(this->get("event_flag"));
-    text += "\n";
-    return text;
+void Event::readCustomValues(QJsonObject values)
+{
+    this->customValues.clear();
+    QMap<QString, bool> expectedValues = this->getExpectedFields();
+    for (QString key : values.keys()) {
+        if (!expectedValues.contains(key)) {
+            this->customValues[key] = values[key].toString();
+        }
+    }
 }
 
-QString Event::buildWarpEventMacro(QMap<QString, QString> *mapNamesToMapConstants)
+void Event::addCustomValuesTo(QJsonObject *obj)
 {
-    QString text = "";
-    text += QString("\twarp_def %1").arg(this->get("x"));
-    text += QString(", %1").arg(this->get("y"));
-    text += QString(", %1").arg(this->get("elevation"));
-    text += QString(", %1").arg(this->get("destination_warp"));
-    text += QString(", %1").arg(mapNamesToMapConstants->value(this->get("destination_map_name")));
-    text += "\n";
-    return text;
+    for (QString key : this->customValues.keys()) {
+        if (!obj->contains(key)) {
+            (*obj)[key] = this->customValues[key];
+        }
+    }
 }
 
-QString Event::buildTriggerEventMacro()
+QJsonObject Event::buildObjectEventJSON()
 {
-    QString text = "";
-    text += QString("\tcoord_event %1").arg(this->get("x"));
-    text += QString(", %1").arg(this->get("y"));
-    text += QString(", %1").arg(this->get("elevation"));
-    text += QString(", %1").arg(this->get("script_var"));
-    text += QString(", %1").arg(this->get("script_var_value"));
-    text += QString(", %1").arg(this->get("script_label"));
-    text += "\n";
-    return text;
+    QJsonObject eventObj;
+    eventObj["graphics_id"] = this->get("sprite");
+    eventObj["x"] = this->getU16("x");
+    eventObj["y"] = this->getU16("y");
+    eventObj["elevation"] = this->getInt("elevation");
+    eventObj["movement_type"] = this->get("movement_type");
+    eventObj["movement_range_x"] = this->getInt("radius_x");
+    eventObj["movement_range_y"] = this->getInt("radius_y");
+    eventObj["trainer_type"] = this->get("trainer_type");
+    eventObj["trainer_sight_or_berry_tree_id"] = this->get("sight_radius_tree_id");
+    eventObj["script"] = this->get("script_label");
+    eventObj["flag"] = this->get("event_flag");
+    this->addCustomValuesTo(&eventObj);
+
+    return eventObj;
 }
 
-QString Event::buildWeatherTriggerEventMacro()
+QJsonObject Event::buildWarpEventJSON(QMap<QString, QString> *mapNamesToMapConstants)
 {
-    QString text = "";
-    text += QString("\tcoord_weather_event %1").arg(this->get("x"));
-    text += QString(", %1").arg(this->get("y"));
-    text += QString(", %1").arg(this->get("elevation"));
-    text += QString(", %1").arg(this->get("weather"));
-    text += "\n";
-    return text;
+    QJsonObject warpObj;
+    warpObj["x"] = this->getU16("x");
+    warpObj["y"] = this->getU16("y");
+    warpObj["elevation"] = this->getInt("elevation");
+    warpObj["dest_map"] = mapNamesToMapConstants->value(this->get("destination_map_name"));
+    warpObj["dest_warp_id"] = this->getInt("destination_warp");
+    this->addCustomValuesTo(&warpObj);
+
+    return warpObj;
 }
 
-QString Event::buildSignEventMacro()
+QJsonObject Event::buildTriggerEventJSON()
 {
-    QString text = "";
-    text += QString("\tbg_event %1").arg(this->get("x"));
-    text += QString(", %1").arg(this->get("y"));
-    text += QString(", %1").arg(this->get("elevation"));
-    text += QString(", %1").arg(this->get("player_facing_direction"));
-    text += QString(", %1").arg(this->get("script_label"));
-    text += "\n";
-    return text;
+    QJsonObject triggerObj;
+    triggerObj["type"] = "trigger";
+    triggerObj["x"] = this->getU16("x");
+    triggerObj["y"] = this->getU16("y");
+    triggerObj["elevation"] = this->getInt("elevation");
+    triggerObj["var"] = this->get("script_var");
+    triggerObj["var_value"] = this->get("script_var_value");
+    triggerObj["script"] = this->get("script_label");
+    this->addCustomValuesTo(&triggerObj);
+
+    return triggerObj;
 }
 
-QString Event::buildHiddenItemEventMacro()
+QJsonObject Event::buildWeatherTriggerEventJSON()
 {
-    QString text = "";
-    text += QString("\tbg_hidden_item_event %1").arg(this->get("x"));
-    text += QString(", %1").arg(this->get("y"));
-    text += QString(", %1").arg(this->get("elevation"));
-    text += QString(", %1").arg(this->get("item"));
-    text += QString(", %1").arg(this->get("flag"));
-    text += "\n";
-    return text;
+    QJsonObject weatherObj;
+    weatherObj["type"] = "weather";
+    weatherObj["x"] = this->getU16("x");
+    weatherObj["y"] = this->getU16("y");
+    weatherObj["elevation"] = this->getInt("elevation");
+    weatherObj["weather"] = this->get("weather");
+    this->addCustomValuesTo(&weatherObj);
+
+    return weatherObj;
 }
 
-QString Event::buildSecretBaseEventMacro()
+QJsonObject Event::buildSignEventJSON()
 {
-    QString text = "";
-    text += QString("\tbg_secret_base_event %1").arg(this->get("x"));
-    text += QString(", %1").arg(this->get("y"));
-    text += QString(", %1").arg(this->get("elevation"));
-    text += QString(", %1").arg(this->get("secret_base_id"));
-    text += "\n";
-    return text;
+    QJsonObject signObj;
+    signObj["type"] = "sign";
+    signObj["x"] = this->getU16("x");
+    signObj["y"] = this->getU16("y");
+    signObj["elevation"] = this->getInt("elevation");
+    signObj["player_facing_dir"] = this->get("player_facing_direction");
+    signObj["script"] = this->get("script_label");
+    this->addCustomValuesTo(&signObj);
+
+    return signObj;
+}
+
+QJsonObject Event::buildHiddenItemEventJSON()
+{
+    QJsonObject hiddenItemObj;
+    hiddenItemObj["type"] = "hidden_item";
+    hiddenItemObj["x"] = this->getU16("x");
+    hiddenItemObj["y"] = this->getU16("y");
+    hiddenItemObj["elevation"] = this->getInt("elevation");
+    hiddenItemObj["item"] = this->get("item");
+    hiddenItemObj["flag"] = this->get("flag");
+    this->addCustomValuesTo(&hiddenItemObj);
+
+    return hiddenItemObj;
+}
+
+QJsonObject Event::buildSecretBaseEventJSON()
+{
+    QJsonObject secretBaseObj;
+    secretBaseObj["type"] = "secret_base";
+    secretBaseObj["x"] = this->getU16("x");
+    secretBaseObj["y"] = this->getU16("y");
+    secretBaseObj["elevation"] = this->getInt("elevation");
+    secretBaseObj["secret_base_id"] = this->get("secret_base_id");
+    this->addCustomValuesTo(&secretBaseObj);
+
+    return secretBaseObj;
 }
 
 void Event::setPixmapFromSpritesheet(QImage spritesheet, int spriteWidth, int spriteHeight)

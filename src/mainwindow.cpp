@@ -8,6 +8,7 @@
 #include "ui_eventpropertiesframe.h"
 #include "bordermetatilespixmapitem.h"
 #include "currentselectedmetatilespixmapitem.h"
+#include "customattributestable.h"
 
 #include <QFileDialog>
 #include <QStandardItemModel>
@@ -486,6 +487,17 @@ void MainWindow::displayMapProperties() {
     ui->checkBox_AllowRunning->setChecked(map->allowRunning.toInt() > 0 || map->allowRunning == "TRUE");
     ui->checkBox_AllowBiking->setChecked(map->allowBiking.toInt() > 0 || map->allowBiking == "TRUE");
     ui->checkBox_AllowEscapeRope->setChecked(map->allowEscapeRope.toInt() > 0 || map->allowEscapeRope == "TRUE");
+
+    // Custom fields table.
+    ui->tableWidget_CustomHeaderFields->blockSignals(true);
+    ui->tableWidget_CustomHeaderFields->setRowCount(0);
+    for (auto it = map->customHeaders.begin(); it != map->customHeaders.end(); it++) {
+        int rowIndex = ui->tableWidget_CustomHeaderFields->rowCount();
+        ui->tableWidget_CustomHeaderFields->insertRow(rowIndex);
+        ui->tableWidget_CustomHeaderFields->setItem(rowIndex, 0, new QTableWidgetItem(it.key()));
+        ui->tableWidget_CustomHeaderFields->setItem(rowIndex, 1, new QTableWidgetItem(it.value()));
+    }
+    ui->tableWidget_CustomHeaderFields->blockSignals(false);
 }
 
 void MainWindow::on_comboBox_Song_activated(const QString &song)
@@ -580,8 +592,7 @@ void MainWindow::on_checkBox_AllowEscapeRope_clicked(bool checked)
 
 void MainWindow::loadDataStructures() {
     Project *project = editor->project;
-    project->readMapLayoutsTable();
-    project->readAllMapLayouts();
+    project->readMapLayouts();
     project->readRegionMapSections();
     project->readItemNames();
     project->readFlagNames();
@@ -593,7 +604,6 @@ void MainWindow::loadDataStructures() {
     project->readCoordEventWeatherNames();
     project->readSecretBaseIds();
     project->readBgEventFacingDirections();
-    project->readMapsWithConnections();
     project->readMetatileBehaviors();
     project->readTilesetProperties();
 }
@@ -674,17 +684,21 @@ void MainWindow::sortMapList() {
         }
         case MapSortOrder::Layout:
         {
+            QMap<QString, int> layoutIndices;
             for (int i = 0; i < project->mapLayoutsTable.length(); i++) {
-                QString layoutName = project->mapLayoutsTable.value(i);
-                QStandardItem *layout = new QStandardItem;
-                layout->setText(layoutName);
-                layout->setIcon(folderIcon);
-                layout->setEditable(false);
-                layout->setData(layoutName, Qt::UserRole);
-                layout->setData("map_layout", MapListUserRoles::TypeRole);
-                layout->setData(i, MapListUserRoles::GroupRole);
-                root->appendRow(layout);
-                mapGroupItemsList->append(layout);
+                QString layoutId = project->mapLayoutsTable.value(i);
+                MapLayout *layout = project->mapLayouts.value(layoutId);
+                QStandardItem *layoutItem = new QStandardItem;
+                layoutItem->setText(layout->name);
+                layoutItem->setIcon(folderIcon);
+                layoutItem->setEditable(false);
+                layoutItem->setData(layout->name, Qt::UserRole);
+                layoutItem->setData("map_layout", MapListUserRoles::TypeRole);
+                layoutItem->setData(layout->id, MapListUserRoles::TypeRole2);
+                layoutItem->setData(i, MapListUserRoles::GroupRole);
+                root->appendRow(layoutItem);
+                mapGroupItemsList->append(layoutItem);
+                layoutIndices[layoutId] = i;
             }
             for (int i = 0; i < project->groupNames->length(); i++) {
                 QStringList names = project->groupedMapNames.value(i);
@@ -692,7 +706,7 @@ void MainWindow::sortMapList() {
                     QString map_name = names.value(j);
                     QStandardItem *map = createMapItem(map_name, i, j);
                     QString layoutId = project->readMapLayoutId(map_name);
-                    QStandardItem *layoutItem = mapGroupItemsList->at(layoutId.toInt() - 1);
+                    QStandardItem *layoutItem = mapGroupItemsList->at(layoutIndices.value(layoutId));
                     layoutItem->setIcon(mapFolderIcon);
                     layoutItem->appendRow(map);
                     mapListIndexes.insert(map_name, map->index());
@@ -746,10 +760,10 @@ void MainWindow::onOpenMapListContextMenu(const QPoint &point)
         connect(actions, SIGNAL(triggered(QAction*)), this, SLOT(onAddNewMapToAreaClick(QAction*)));
         menu->exec(QCursor::pos());
     } else if (itemType == "map_layout") {
-        QString layoutName = selectedItem->data(Qt::UserRole).toString();
+        QString layoutId = selectedItem->data(MapListUserRoles::TypeRole2).toString();
         QMenu* menu = new QMenu(this);
         QActionGroup* actions = new QActionGroup(menu);
-        actions->addAction(menu->addAction("Add New Map with Layout"))->setData(layoutName);
+        actions->addAction(menu->addAction("Add New Map with Layout"))->setData(layoutId);
         connect(actions, SIGNAL(triggered(QAction*)), this, SLOT(onAddNewMapToLayoutClick(QAction*)));
         menu->exec(QCursor::pos());
     }
@@ -769,17 +783,17 @@ void MainWindow::onAddNewMapToAreaClick(QAction* triggeredAction)
 
 void MainWindow::onAddNewMapToLayoutClick(QAction* triggeredAction)
 {
-    QString layoutName = triggeredAction->data().toString();
-    openNewMapPopupWindow(MapSortOrder::Layout, layoutName);
+    QString layoutId = triggeredAction->data().toString();
+    openNewMapPopupWindow(MapSortOrder::Layout, layoutId);
 }
 
 void MainWindow::onNewMapCreated() {
     QString newMapName = this->newmapprompt->map->name;
     int newMapGroup = this->newmapprompt->group;
     Map *newMap_ = this->newmapprompt->map;
-    bool updateLayout = this->newmapprompt->changeLayout;
+    bool existingLayout = this->newmapprompt->existingLayout;
 
-    Map *newMap = editor->project->addNewMapToGroup(newMapName, newMapGroup, newMap_, updateLayout);
+    Map *newMap = editor->project->addNewMapToGroup(newMapName, newMapGroup, newMap_, existingLayout);
 
     logInfo(QString("Created a new map named %1.").arg(newMapName));
 
@@ -1194,7 +1208,7 @@ void MainWindow::updateSelectedObjects() {
         field_labels["movement_type"] = "Movement";
         field_labels["radius_x"] = "Movement Radius X";
         field_labels["radius_y"] = "Movement Radius Y";
-        field_labels["is_trainer"] = "Trainer";
+        field_labels["trainer_type"] = "Trainer Type";
         field_labels["sight_radius_tree_id"] = "Sight Radius / Berry Tree ID";
         field_labels["destination_warp"] = "Destination Warp";
         field_labels["destination_map_name"] = "Destination Map";
@@ -1232,7 +1246,7 @@ void MainWindow::updateSelectedObjects() {
             fields << "radius_y";
             fields << "script_label";
             fields << "event_flag";
-            fields << "is_trainer";
+            fields << "trainer_type";
             fields << "sight_radius_tree_id";
         }
         else if (event_type == EventType::Warp) {
@@ -1266,24 +1280,28 @@ void MainWindow::updateSelectedObjects() {
             fl->setContentsMargins(9, 0, 9, 0);
             fl->setRowWrapPolicy(QFormLayout::WrapLongRows);
 
-            // is_trainer is the only non-combobox item.
-            if (key == "is_trainer") {
-                QCheckBox *checkbox = new QCheckBox(widget);
-                checkbox->setEnabled(true);
-                checkbox->setChecked(value.toInt() != 0 && value != "FALSE");
-                checkbox->setToolTip("Whether or not this object is trainer.");
-                fl->addRow(new QLabel(field_labels[key], widget), checkbox);
-                widget->setLayout(fl);
-                frame->layout()->addWidget(widget);
-                connect(checkbox, &QCheckBox::stateChanged, [=](int state) {
-                    QString isTrainer = state == Qt::Checked ? "TRUE" : "FALSE";
-                    item->event->put("is_trainer", isTrainer);
-                });
-                continue;
-            }
-
             NoScrollComboBox *combo = new NoScrollComboBox(widget);
             combo->setEditable(true);
+
+            // trainer_type has custom values, so it has special signal logic.
+            if (key == "trainer_type") {
+                combo->setEditable(false);
+                combo->addItem("NONE", "0");
+                combo->addItem("NORMAL", "1");
+                combo->addItem("SEE ALL DIRECTIONS", "3");
+                combo->setToolTip("The trainer type of this event object. If it is not a trainer, use NONE. SEE ALL DIRECTIONS should only be used with a sight radius of 1.");
+
+                int index = combo->findData(value);
+                if (index != -1) {
+                    combo->setCurrentIndex(index);
+                }
+
+                fl->addRow(new QLabel(field_labels[key], widget), combo);
+                widget->setLayout(fl);
+                frame->layout()->addWidget(widget);
+                item->bindToUserData(combo, key);
+                continue;
+            }
 
             if (key == "destination_map_name") {
                 if (!editor->project->mapNames->contains(value)) {
@@ -1359,8 +1377,13 @@ void MainWindow::updateSelectedObjects() {
             item->bind(combo, key);
         }
 
-        frames.append(frame);
+        // Custom fields table.
+        if (event_type != EventType::HealLocation) {
+            CustomAttributesTable *customAttributes = new CustomAttributesTable(item->event, frame);
+            frame->layout()->addWidget(customAttributes);
+        }
 
+        frames.append(frame);
     }
 
     //int scroll = ui->scrollArea_4->verticalScrollBar()->value();
@@ -1895,6 +1918,42 @@ void MainWindow::on_actionAbout_Porymap_triggered()
     AboutPorymap *window = new AboutPorymap(this);
     window->setAttribute(Qt::WA_DeleteOnClose);
     window->show();
+}
+
+void MainWindow::on_pushButton_AddCustomHeaderField_clicked()
+{
+    int rowIndex = this->ui->tableWidget_CustomHeaderFields->rowCount();
+    this->ui->tableWidget_CustomHeaderFields->insertRow(rowIndex);
+    this->ui->tableWidget_CustomHeaderFields->selectRow(rowIndex);
+    this->editor->updateCustomMapHeaderValues(this->ui->tableWidget_CustomHeaderFields);
+}
+
+void MainWindow::on_pushButton_DeleteCustomHeaderField_clicked()
+{
+    int rowCount = this->ui->tableWidget_CustomHeaderFields->rowCount();
+    if (rowCount > 0) {
+        QModelIndexList indexList = ui->tableWidget_CustomHeaderFields->selectionModel()->selectedIndexes();
+        QList<QPersistentModelIndex> persistentIndexes;
+        for (QModelIndex index : indexList) {
+            QPersistentModelIndex persistentIndex(index);
+            persistentIndexes.append(persistentIndex);
+        }
+
+        for (QPersistentModelIndex index : persistentIndexes) {
+            this->ui->tableWidget_CustomHeaderFields->removeRow(index.row());
+        }
+
+        if (this->ui->tableWidget_CustomHeaderFields->rowCount() > 0) {
+            this->ui->tableWidget_CustomHeaderFields->selectRow(0);
+        }
+
+        this->editor->updateCustomMapHeaderValues(this->ui->tableWidget_CustomHeaderFields);
+    }
+}
+
+void MainWindow::on_tableWidget_CustomHeaderFields_cellChanged(int row, int column)
+{
+    this->editor->updateCustomMapHeaderValues(this->ui->tableWidget_CustomHeaderFields);
 }
 
 void MainWindow::closeEvent(QCloseEvent *event) {

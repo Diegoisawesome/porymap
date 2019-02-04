@@ -1109,6 +1109,21 @@ void Editor::toggleBorderVisibility(bool visible)
     this->setConnectionsVisibility(visible);
 }
 
+void Editor::updateCustomMapHeaderValues(QTableWidget *table)
+{
+    QMap<QString, QString> fields;
+    for (int row = 0; row < table->rowCount(); row++) {
+        QString keyStr = "";
+        QString valueStr = "";
+        QTableWidgetItem *key = table->item(row, 0);
+        QTableWidgetItem *value = table->item(row, 1);
+        if (key) keyStr = key->text();
+        if (value) valueStr = value->text();
+        fields[keyStr] = valueStr;
+    }
+    map->customHeaders = fields;
+}
+
 Tileset* Editor::getCurrentMapPrimaryTileset()
 {
     QString tilesetLabel = map->layout->tileset_primary_label;
@@ -1225,6 +1240,8 @@ DraggablePixmapItem* Editor::addNewEvent(QString event_type) {
         Event *event = Event::createNewEvent(event_type, map->name);
         event->put("map_name", map->name);
         if (event_type == "event_heal_location") {
+            HealLocation hl = HealLocation::fromEvent(event);
+            project->flyableMaps.append(hl);
             event->put("index", project->flyableMaps.length());
         }
         map->addEvent(event);
