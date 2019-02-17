@@ -64,6 +64,7 @@ private slots:
     void on_checkBox_AllowRunning_clicked(bool checked);
     void on_checkBox_AllowBiking_clicked(bool checked);
     void on_checkBox_AllowEscapeRope_clicked(bool checked);
+    void on_checkBox_PhoneService_clicked(bool checked);
 
     void on_tabWidget_currentChanged(int index);
 

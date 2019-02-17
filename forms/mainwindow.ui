@@ -2094,6 +2094,23 @@
               </property>
              </widget>
             </item>
+            <item row="11" column="0">
+             <widget class="QLabel" name="label_PhoneService">
+              <property name="text">
+               <string>Has Phone Service</string>
+              </property>
+             </widget>
+            </item>
+            <item row="11" column="1">
+             <widget class="QCheckBox" name="checkBox_PhoneService">
+              <property name="toolTip">
+               <string>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;Allows the Phone to be used&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</string>
+              </property>
+              <property name="text">
+               <string/>
+              </property>
+             </widget>
+            </item>
            </layout>
           </widget>
          </item>

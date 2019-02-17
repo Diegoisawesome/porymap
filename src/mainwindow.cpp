@@ -153,6 +153,7 @@ void MainWindow::setProjectSpecificUIVisibility()
         ui->checkBox_AllowRunning->setVisible(false);
         ui->checkBox_AllowBiking->setVisible(false);
         ui->checkBox_AllowEscapeRope->setVisible(false);
+        ui->checkBox_PhoneService->setVisible(false);
         ui->label_AllowRunning->setVisible(false);
         ui->label_AllowBiking->setVisible(false);
         ui->label_AllowEscapeRope->setVisible(false);
@@ -161,6 +162,7 @@ void MainWindow::setProjectSpecificUIVisibility()
         ui->checkBox_AllowRunning->setVisible(true);
         ui->checkBox_AllowBiking->setVisible(true);
         ui->checkBox_AllowEscapeRope->setVisible(true);
+        ui->checkBox_PhoneService->setVisible(true);
         ui->label_AllowRunning->setVisible(true);
         ui->label_AllowBiking->setVisible(true);
         ui->label_AllowEscapeRope->setVisible(true);
@@ -457,6 +459,7 @@ void MainWindow::displayMapProperties() {
     ui->checkBox_AllowRunning->setChecked(false);
     ui->checkBox_AllowBiking->setChecked(false);
     ui->checkBox_AllowEscapeRope->setChecked(false);
+    ui->checkBox_PhoneService->setChecked(false);
     if (!editor || !editor->map || !editor->project) {
         ui->frame_3->setEnabled(false);
         return;
@@ -493,6 +496,7 @@ void MainWindow::displayMapProperties() {
     ui->checkBox_AllowRunning->setChecked(map->allowRunning.toInt() > 0 || map->allowRunning == "TRUE");
     ui->checkBox_AllowBiking->setChecked(map->allowBiking.toInt() > 0 || map->allowBiking == "TRUE");
     ui->checkBox_AllowEscapeRope->setChecked(map->allowEscapeRope.toInt() > 0 || map->allowEscapeRope == "TRUE");
+    ui->checkBox_PhoneService->setChecked(map->phoneService.toInt() > 0 || map->phoneService == "TRUE");
 
     // Custom fields table.
     ui->tableWidget_CustomHeaderFields->blockSignals(true);
@@ -592,6 +596,17 @@ void MainWindow::on_checkBox_AllowEscapeRope_clicked(bool checked)
             editor->map->allowEscapeRope = "1";
         } else {
             editor->map->allowEscapeRope = "0";
+        }
+    }
+}
+
+void MainWindow::on_checkBox_PhoneService_clicked(bool checked)
+{
+    if (editor && editor->map) {
+        if (checked) {
+            editor->map->phoneService = "1";
+        } else {
+            editor->map->phoneService = "0";
         }
     }
 }

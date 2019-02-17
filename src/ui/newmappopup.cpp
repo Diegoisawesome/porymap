@@ -81,6 +81,7 @@ void NewMapPopup::setDefaultValues(int groupNum, QString mapSec) {
         ui->checkBox_NewMap_Allow_Running->setVisible(false);
         ui->checkBox_NewMap_Allow_Biking->setVisible(false);
         ui->checkBox_NewMap_Allow_Escape_Rope->setVisible(false);
+        ui->checkBox_NewMap_PhoneService->setVisible(false);
         ui->label_NewMap_Allow_Running->setVisible(false);
         ui->label_NewMap_Allow_Biking->setVisible(false);
         ui->label_NewMap_Allow_Escape_Rope->setVisible(false);
@@ -89,6 +90,7 @@ void NewMapPopup::setDefaultValues(int groupNum, QString mapSec) {
         ui->checkBox_NewMap_Allow_Running->setVisible(true);
         ui->checkBox_NewMap_Allow_Biking->setVisible(true);
         ui->checkBox_NewMap_Allow_Escape_Rope->setVisible(true);
+        ui->checkBox_NewMap_PhoneService->setVisible(true);
         ui->label_NewMap_Allow_Running->setVisible(true);
         ui->label_NewMap_Allow_Biking->setVisible(true);
         ui->label_NewMap_Allow_Escape_Rope->setVisible(true);
@@ -149,6 +151,7 @@ void NewMapPopup::on_pushButton_NewMap_Accept_clicked() {
         newMap->allowRunning = this->ui->checkBox_NewMap_Allow_Running->isChecked() ? "1" : "0";
         newMap->allowBiking = this->ui->checkBox_NewMap_Allow_Biking->isChecked() ? "1" : "0";
         newMap->allowEscapeRope = this->ui->checkBox_NewMap_Allow_Escape_Rope->isChecked() ? "1" : "0";
+        newMap->phoneService = this->ui->checkBox_NewMap_PhoneService->isChecked() ? "1" : "0";
     }
 
     group = this->ui->comboBox_NewMap_Group->currentText().remove("gMapGroup").toInt();

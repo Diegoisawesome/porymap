@@ -143,6 +143,7 @@ QMap<QString, bool> Project::getTopLevelMapFields() {
             {"allow_bike", true},
             {"allow_escape_rope", true},
             {"allow_running", true},
+            {"phone_service", true},
             {"show_map_name", true},
             {"battle_scene", true},
             {"connections", true},
@@ -209,6 +210,7 @@ bool Project::loadMapData(Map* map) {
         map->allowBiking = QString::number(mapObj["allow_bike"].toBool());
         map->allowEscapeRope = QString::number(mapObj["allow_escape_rope"].toBool());
         map->allowRunning = QString::number(mapObj["allow_running"].toBool());
+        map->phoneService = QString::number(mapObj["phone_service"].toBool());
     }
     map->sharedEventsMap = mapObj["shared_events_map"].toString();
     map->sharedScriptsMap = mapObj["shared_scripts_map"].toString();
@@ -428,6 +430,7 @@ void Project::setNewMapHeader(Map* map, int mapIndex) {
         map->allowEscapeRope = "0";
         map->allowRunning = "1";
         map->show_location = "1";
+        map->phoneService = "1";
     }
 
     map->battle_scene = "MAP_BATTLE_SCENE_NORMAL";
@@ -926,6 +929,7 @@ void Project::saveMap(Map *map) {
     mapObj["allow_bike"] = map->allowBiking.toInt() > 0 || map->allowBiking == "TRUE";
     mapObj["allow_escape_rope"] = map->allowEscapeRope.toInt() > 0 || map->allowEscapeRope == "TRUE";
     mapObj["allow_running"] = map->allowRunning.toInt() > 0 || map->allowRunning == "TRUE";
+    mapObj["phone_service"] = map->phoneService.toInt() > 0 || map->phoneService == "TRUE";
     mapObj["show_map_name"] = map->show_location.toInt() > 0 || map->show_location == "TRUE";
     mapObj["battle_scene"] = map->battle_scene;
 
