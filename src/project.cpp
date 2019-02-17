@@ -227,8 +227,8 @@ bool Project::loadMapData(Map* map) {
         object->put("movement_type", event["movement_type"].toString());
         object->put("radius_x", QString::number(event["movement_range_x"].toInt()));
         object->put("radius_y", QString::number(event["movement_range_y"].toInt()));
-        object->put("trainer_type", QString::number(event["trainer_type"].toInt()));
-        object->put("sight_radius_tree_id", QString::number(event["trainer_sight_or_berry_tree_id"].toInt()));
+        object->put("trainer_type", event["trainer_type"].toString());
+        object->put("sight_radius_tree_id", event["trainer_sight_or_berry_tree_id"].toString());
         object->put("script_label", event["script"].toString());
         object->put("event_flag", event["flag"].toString());
         object->put("event_group_type", "object_event_group");
@@ -295,7 +295,7 @@ bool Project::loadMapData(Map* map) {
             coord->put("y", QString::number(event["y"].toInt()));
             coord->put("elevation", QString::number(event["elevation"].toInt()));
             coord->put("script_var", event["var"].toString());
-            coord->put("script_var_value", QString::number(event["var_value"].toInt()));
+            coord->put("script_var_value", event["var_value"].toString());
             coord->put("script_label", event["script"].toString());
             coord->put("event_group_type", "coord_event_group");
             map->events["coord_event_group"].append(coord);
@@ -598,7 +598,7 @@ void Project::saveMapConstantsHeader() {
     }
 
     text += QString("#define MAP_GROUPS_COUNT %1\n\n").arg(groupNum);
-    text += QString("#endif  // GUARD_CONSTANTS_MAP_GROUPS_H\n");
+    text += QString("#endif // GUARD_CONSTANTS_MAP_GROUPS_H\n");
     saveTextFile(root + "/include/constants/map_groups.h", text);
 }
 
@@ -1248,6 +1248,7 @@ QString Project::readTextFile(QString path) {
         return QString();
     }
     QTextStream in(&file);
+    in.setCodec("UTF-8");
     QString text = "";
     while (!in.atEnd()) {
         text += in.readLine() + "\n";

@@ -26,6 +26,7 @@
 #include <QProcess>
 #include <QSysInfo>
 #include <QDesktopServices>
+#include <QMatrix>
 
 MainWindow::MainWindow(QWidget *parent) :
     QMainWindow(parent),
@@ -215,6 +216,9 @@ void MainWindow::loadUserSettings() {
     this->editor->collisionOpacity = static_cast<qreal>(porymapConfig.getCollisionOpacity()) / 100;
     ui->horizontalSlider_CollisionTransparency->setValue(porymapConfig.getCollisionOpacity());
     ui->horizontalSlider_CollisionTransparency->blockSignals(false);
+    ui->horizontalSlider_MetatileZoom->blockSignals(true);
+    ui->horizontalSlider_MetatileZoom->setValue(porymapConfig.getMetatilesZoom());
+    ui->horizontalSlider_MetatileZoom->blockSignals(false);
 }
 
 void MainWindow::restoreWindowState() {
@@ -396,6 +400,8 @@ void MainWindow::redrawMapScene()
     ui->graphicsView_Collision->setScene(editor->scene_collision_metatiles);
     //ui->graphicsView_Collision->setSceneRect(editor->scene_collision_metatiles->sceneRect());
     ui->graphicsView_Collision->setFixedSize(editor->movement_permissions_selector_item->pixmap().width() + 2, editor->movement_permissions_selector_item->pixmap().height() + 2);
+
+    on_horizontalSlider_MetatileZoom_valueChanged(ui->horizontalSlider_MetatileZoom->value());
 }
 
 void MainWindow::openWarpMap(QString map_name, QString warp_num) {
@@ -1797,11 +1803,13 @@ void MainWindow::on_comboBox_EmergeMap_currentTextChanged(const QString &mapName
 void MainWindow::on_comboBox_PrimaryTileset_activated(const QString &tilesetLabel)
 {
     editor->updatePrimaryTileset(tilesetLabel);
+    on_horizontalSlider_MetatileZoom_valueChanged(ui->horizontalSlider_MetatileZoom->value());
 }
 
 void MainWindow::on_comboBox_SecondaryTileset_activated(const QString &tilesetLabel)
 {
     editor->updateSecondaryTileset(tilesetLabel);
+    on_horizontalSlider_MetatileZoom_valueChanged(ui->horizontalSlider_MetatileZoom->value());
 }
 
 void MainWindow::on_pushButton_clicked()
@@ -1954,6 +1962,21 @@ void MainWindow::on_pushButton_DeleteCustomHeaderField_clicked()
 void MainWindow::on_tableWidget_CustomHeaderFields_cellChanged(int row, int column)
 {
     this->editor->updateCustomMapHeaderValues(this->ui->tableWidget_CustomHeaderFields);
+}
+
+void MainWindow::on_horizontalSlider_MetatileZoom_valueChanged(int value) {
+    porymapConfig.setMetatilesZoom(value);
+    double scale = pow(3.0, static_cast<double>(value - 30) / 30.0);
+
+    QMatrix matrix;
+    matrix.scale(scale, scale);
+    QSize size(editor->metatile_selector_item->pixmap().width(), 
+               editor->metatile_selector_item->pixmap().height());
+    size *= scale;
+
+    ui->graphicsView_Metatiles->setResizeAnchor(QGraphicsView::NoAnchor);
+    ui->graphicsView_Metatiles->setMatrix(matrix);
+    ui->graphicsView_Metatiles->setFixedSize(size.width() + 2, size.height() + 2);
 }
 
 void MainWindow::closeEvent(QCloseEvent *event) {
