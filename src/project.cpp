@@ -41,6 +41,7 @@ Project::Project()
     weatherNames = new QStringList;
     coordEventWeatherNames = new QStringList;
     secretBaseIds = new QStringList;
+    fruitTreeIds = new QStringList;
     bgEventFacingDirections = new QStringList;
     map_cache = new QMap<QString, Map*>;
     mapConstantsToMapNames = new QMap<QString, QString>;
@@ -346,6 +347,15 @@ bool Project::loadMapData(Map* map) {
             bg->put("y", QString::number(event["y"].toInt()));
             bg->put("elevation", QString::number(event["elevation"].toInt()));
             bg->put("secret_base_id", event["secret_base_id"].toString());
+            bg->put("event_group_type", "bg_event_group");
+            map->events["bg_event_group"].append(bg);
+        } else if (type == "fruit_tree") {
+            Event *bg = new Event(event, EventType::FruitTree);
+            bg->put("map_name", map->name);
+            bg->put("x", QString::number(event["x"].toInt()));
+            bg->put("y", QString::number(event["y"].toInt()));
+            bg->put("elevation", QString::number(event["elevation"].toInt()));
+            bg->put("fruit_tree_id", event["fruit_tree_id"].toString());
             bg->put("event_group_type", "bg_event_group");
             map->events["bg_event_group"].append(bg);
         }
@@ -998,6 +1008,9 @@ void Project::saveMap(Map *map) {
             } else if (event_type == EventType::SecretBase) {
                 QJsonObject secretBaseObj = event->buildSecretBaseEventJSON();
                 bgEventsArr.append(secretBaseObj);
+            } else if (event_type == EventType::FruitTree) {
+                QJsonObject fruitTreeObj = event->buildFruitTreeEventJSON();
+                bgEventsArr.append(fruitTreeObj);
             }
         }
         mapObj["bg_events"] = bgEventsArr;
@@ -1570,6 +1583,12 @@ void Project::readSecretBaseIds() {
     readCDefinesSorted(filepath, prefixes, secretBaseIds);
 }
 
+void Project::readFruitTreeIds() {
+    QString filepath = root + "/include/constants/fruit_trees.h";
+    QStringList prefixes = (QStringList() << "FRUIT_TREE_");
+    readCDefinesSorted(filepath, prefixes, fruitTreeIds);
+}
+
 void Project::readBgEventFacingDirections() {
     QString filepath = root + "/include/constants/bg_event_constants.h";
     QStringList prefixes = (QStringList() << "BG_EVENT_PLAYER_FACING_");
@@ -1679,7 +1698,7 @@ void Project::loadEventPixmaps(QList<Event*> objects) {
             object->pixmap = QPixmap(":/images/Entities_16x16.png").copy(16, 0, 16, 16);
         } else if (event_type == EventType::Trigger || event_type == EventType::WeatherTrigger) {
             object->pixmap = QPixmap(":/images/Entities_16x16.png").copy(32, 0, 16, 16);
-        } else if (event_type == EventType::Sign || event_type == EventType::HiddenItem || event_type == EventType::SecretBase) {
+        } else if (event_type == EventType::Sign || event_type == EventType::HiddenItem || event_type == EventType::SecretBase || event_type == EventType::FruitTree) {
             object->pixmap = QPixmap(":/images/Entities_16x16.png").copy(48, 0, 16, 16);
         } else if (event_type == EventType::HealLocation) {
             object->pixmap = QPixmap(":/images/Entities_16x16.png").copy(64, 0, 16, 16);

@@ -621,6 +621,7 @@ void MainWindow::loadDataStructures() {
     project->readWeatherNames();
     project->readCoordEventWeatherNames();
     project->readSecretBaseIds();
+    project->readFruitTreeIds();
     project->readBgEventFacingDirections();
     project->readMetatileBehaviors();
     project->readTilesetProperties();
@@ -1229,7 +1230,7 @@ void MainWindow::updateObjects() {
         else if (event_type == EventType::Trigger || event_type == EventType::WeatherTrigger) {
             hasTriggers = true;
         }
-        else if (event_type == EventType::Sign || event_type == EventType::HiddenItem || event_type == EventType::SecretBase) {
+        else if (event_type == EventType::Sign || event_type == EventType::HiddenItem || event_type == EventType::SecretBase || event_type == EventType::FruitTree) {
             hasBGs = true;
         }
         else if (event_type == EventType::HealLocation) {
@@ -1350,6 +1351,7 @@ void MainWindow::updateSelectedObjects() {
         field_labels["weather"] = "Weather";
         field_labels["flag"] = "Flag";
         field_labels["secret_base_id"] = "Secret Base Id";
+        field_labels["fruit_tree_id"] = "Fruit Tree Id";
 
         QStringList fields;
 
@@ -1400,6 +1402,9 @@ void MainWindow::updateSelectedObjects() {
         }
         else if (event_type == EventType::SecretBase) {
             fields << "secret_base_id";
+        }
+        else if (event_type == EventType::FruitTree) {
+            fields << "fruit_tree_id";
         }
 
         for (QString key : fields) {
@@ -1480,6 +1485,12 @@ void MainWindow::updateSelectedObjects() {
                 }
                 combo->addItems(*editor->project->secretBaseIds);
                 combo->setToolTip("The secret base id which is inside this secret base entrance. Secret base ids are meant to be unique to each and every secret base entrance.");
+            } else if (key == "fruit_tree_id") {
+                if (!editor->project->fruitTreeIds->contains(value)) {
+                    combo->addItem(value);
+                }
+                combo->addItems(*editor->project->fruitTreeIds);
+                combo->setToolTip("The fruit tree id. Fruit tree ids are meant to be unique to each and every tree.");
             } else if (key == "player_facing_direction") {
                 if (!editor->project->bgEventFacingDirections->contains(value)) {
                     combo->addItem(value);

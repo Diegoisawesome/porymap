@@ -16,6 +16,7 @@ public:
     static QString Sign;
     static QString HiddenItem;
     static QString SecretBase;
+    static QString FruitTree;
     static QString HealLocation;
 };
 
@@ -65,6 +66,7 @@ public:
     static Event* createNewSignEvent();
     static Event* createNewHiddenItemEvent();
     static Event* createNewSecretBaseEvent();
+    static Event* createNewFruitTreeEvent();
 
     QJsonObject buildObjectEventJSON();
     QJsonObject buildWarpEventJSON(QMap<QString, QString>*);
@@ -73,6 +75,7 @@ public:
     QJsonObject buildSignEventJSON();
     QJsonObject buildHiddenItemEventJSON();
     QJsonObject buildSecretBaseEventJSON();
+    QJsonObject buildFruitTreeEventJSON();
     void setPixmapFromSpritesheet(QImage, int, int);
     int getPixelX();
     int getPixelY();

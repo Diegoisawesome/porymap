@@ -19,6 +19,7 @@ public slots:
     void newSign();
     void newHiddenItem();
     void newSecretBase();
+    void newFruitTree();
 signals:
     void newEventAdded(QString);
 private:
@@ -31,6 +32,7 @@ private:
     QAction *newSignAction;
     QAction *newHiddenItemAction;
     QAction *newSecretBaseAction;
+    QAction *newFruitTreeAction;
     void init();
 };
 

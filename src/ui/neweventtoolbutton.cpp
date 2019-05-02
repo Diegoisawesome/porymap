@@ -49,6 +49,10 @@ void NewEventToolButton::init()
     this->newSecretBaseAction->setIcon(QIcon(":/icons/add.ico"));
     connect(this->newSecretBaseAction, SIGNAL(triggered(bool)), this, SLOT(newSecretBase()));
 
+    this->newFruitTreeAction = new QAction("New Fruit Tree", this);
+    this->newFruitTreeAction->setIcon(QIcon(":/icons/add.ico"));
+    connect(this->newFruitTreeAction, SIGNAL(triggered(bool)), this, SLOT(newFruitTree()));
+
     QMenu *alignMenu = new QMenu();
     alignMenu->addAction(this->newObjectAction);
     alignMenu->addAction(this->newWarpAction);
@@ -58,6 +62,7 @@ void NewEventToolButton::init()
     alignMenu->addAction(this->newSignAction);
     alignMenu->addAction(this->newHiddenItemAction);
     alignMenu->addAction(this->newSecretBaseAction);
+    alignMenu->addAction(this->newFruitTreeAction);
     this->setMenu(alignMenu);
     this->setDefaultAction(this->newObjectAction);
 }
@@ -112,5 +117,11 @@ void NewEventToolButton::newHiddenItem()
 void NewEventToolButton::newSecretBase()
 {
     this->selectedEventType = EventType::SecretBase;
+    emit newEventAdded(this->selectedEventType);
+}
+
+void NewEventToolButton::newFruitTree()
+{
+    this->selectedEventType = EventType::FruitTree;
     emit newEventAdded(this->selectedEventType);
 }

@@ -8,6 +8,7 @@ QString EventType::WeatherTrigger = "event_weather_trigger";
 QString EventType::Sign = "event_sign";
 QString EventType::HiddenItem = "event_hidden_item";
 QString EventType::SecretBase = "event_secret_base";
+QString EventType::FruitTree = "event_fruit_tree";
 QString EventType::HealLocation = "event_heal_location";
 
 Event::Event()
@@ -43,6 +44,8 @@ Event* Event::createNewEvent(QString event_type, QString map_name)
         event = createNewHiddenItemEvent();
     } else if (event_type == EventType::SecretBase) {
         event = createNewSecretBaseEvent();
+    } else if (event_type == EventType::FruitTree) {
+        event = createNewFruitTreeEvent();
     }
 
     event->setX(0);
@@ -136,6 +139,15 @@ Event* Event::createNewSecretBaseEvent()
     return event;
 }
 
+Event* Event::createNewFruitTreeEvent()
+{
+    Event *event = new Event;
+    event->put("event_group_type", "bg_event_group");
+    event->put("event_type", EventType::FruitTree);
+    event->put("fruit_tree_id", "FRUIT_TREE_ROUTE_29");
+    return event;
+}
+
 int Event::getPixelX()
 {
     return (this->x() * 16) - qMax(0, (this->spriteWidth - 16) / 2);
@@ -214,6 +226,14 @@ QMap<QString, bool> Event::getExpectedFields()
             {"y", true},
             {"elevation", true},
             {"secret_base_id", true},
+        };
+    } else if (type == EventType::FruitTree) {
+        return QMap<QString, bool> {
+            {"type", true},
+            {"x", true},
+            {"y", true},
+            {"elevation", true},
+            {"fruit_tree_id", true},
         };
     } else {
         return QMap<QString, bool>();
@@ -339,6 +359,19 @@ QJsonObject Event::buildSecretBaseEventJSON()
     this->addCustomValuesTo(&secretBaseObj);
 
     return secretBaseObj;
+}
+
+QJsonObject Event::buildFruitTreeEventJSON()
+{
+    QJsonObject fruitTreeObj;
+    fruitTreeObj["type"] = "fruit_tree";
+    fruitTreeObj["x"] = this->getU16("x");
+    fruitTreeObj["y"] = this->getU16("y");
+    fruitTreeObj["elevation"] = this->getInt("elevation");
+    fruitTreeObj["fruit_tree_id"] = this->get("fruit_tree_id");
+    this->addCustomValuesTo(&fruitTreeObj);
+
+    return fruitTreeObj;
 }
 
 void Event::setPixmapFromSpritesheet(QImage spritesheet, int spriteWidth, int spriteHeight)

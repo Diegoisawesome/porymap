@@ -39,6 +39,7 @@ public:
     QStringList *weatherNames = nullptr;
     QStringList *coordEventWeatherNames = nullptr;
     QStringList *secretBaseIds = nullptr;
+    QStringList *fruitTreeIds = nullptr;
     QStringList *bgEventFacingDirections = nullptr;
     QMap<QString, int> metatileBehaviorMap;
     QMap<int, QString> metatileBehaviorMapInverse;
@@ -110,6 +111,7 @@ public:
     void readWeatherNames();
     void readCoordEventWeatherNames();
     void readSecretBaseIds();
+    void readFruitTreeIds();
     void readBgEventFacingDirections();
     void readMetatileBehaviors();
 
