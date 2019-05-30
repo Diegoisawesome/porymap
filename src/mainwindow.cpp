@@ -10,7 +10,6 @@
 #include "currentselectedmetatilespixmapitem.h"
 #include "customattributestable.h"
 
-
 #include <QFileDialog>
 #include <QStandardItemModel>
 #include <QShortcut>
@@ -469,7 +468,7 @@ void MainWindow::displayMapProperties() {
     ui->comboBox_Song->addItems(songs);
     ui->comboBox_Song->setCurrentText(map->song);
 
-    ui->comboBox_Location->addItems(*project->regionMapSections);
+    ui->comboBox_Location->addItems(project->mapSectionValueToName.values());
     ui->comboBox_Location->setCurrentText(map->location);
 
     QMap<QString, QStringList> tilesets = project->getTilesetLabels();
@@ -616,6 +615,7 @@ void MainWindow::loadDataStructures() {
     project->readFlagNames();
     project->readVarNames();
     project->readMovementTypes();
+    project->readInitialFacingDirections();
     project->readMapTypes();
     project->readMapBattleScenes();
     project->readWeatherNames();
@@ -625,6 +625,7 @@ void MainWindow::loadDataStructures() {
     project->readBgEventFacingDirections();
     project->readMetatileBehaviors();
     project->readTilesetProperties();
+    project->readHealLocations();
 }
 
 void MainWindow::populateMapList() {
@@ -674,8 +675,8 @@ void MainWindow::sortMapList() {
         case MapSortOrder::Area:
         {
             QMap<QString, int> mapsecToGroupNum;
-            for (int i = 0; i < project->regionMapSections->length(); i++) {
-                QString mapsec_name = project->regionMapSections->value(i);
+            for (int i = 0; i < project->mapSectionNameToValue.size(); i++) {
+                QString mapsec_name = project->mapSectionValueToName.value(i);
                 QStandardItem *mapsec = new QStandardItem;
                 mapsec->setText(mapsec_name);
                 mapsec->setIcon(folderIcon);
@@ -737,6 +738,7 @@ void MainWindow::sortMapList() {
 
     ui->mapList->setUpdatesEnabled(true);
     ui->mapList->repaint();
+    updateMapList();
 }
 
 QStandardItem* MainWindow::createMapItem(QString mapName, int groupNum, int inGroupNum) {
@@ -1041,8 +1043,7 @@ void MainWindow::drawMapListIcons(QAbstractItemModel *model) {
 }
 
 void MainWindow::updateMapList() {
-    QAbstractItemModel *model = ui->mapList->model();
-    drawMapListIcons(model);
+    drawMapListIcons(mapListModel);
 }
 
 void MainWindow::on_action_Save_Project_triggered()
@@ -1077,6 +1078,8 @@ void MainWindow::on_tabWidget_2_currentChanged(int index)
     } else if (index == 1) {
         editor->setEditingCollision();
     }
+    editor->playerViewRect->setVisible(false);
+    editor->cursorMapTileRect->setVisible(false);
 }
 
 void MainWindow::on_action_Exit_triggered()
@@ -1403,6 +1406,11 @@ void MainWindow::updateSelectedObjects() {
         else if (event_type == EventType::SecretBase) {
             fields << "secret_base_id";
         }
+        else if (event_type == EventType::HealLocation) {
+            // Hide elevation so users don't get impression that editing it is meaningful.
+            frame->ui->spinBox_z->setVisible(false);
+            frame->ui->label_z->setVisible(false);
+        }
         else if (event_type == EventType::FruitTree) {
             fields << "fruit_tree_id";
         }
@@ -1423,7 +1431,9 @@ void MainWindow::updateSelectedObjects() {
                 combo->addItem("NONE", "0");
                 combo->addItem("NORMAL", "1");
                 combo->addItem("SEE ALL DIRECTIONS", "3");
-                combo->setToolTip("The trainer type of this event object. If it is not a trainer, use NONE. SEE ALL DIRECTIONS should only be used with a sight radius of 1.");
+                combo->setToolTip("The trainer type of this event object.\n"
+                                  "If it is not a trainer, use NONE. SEE ALL DIRECTIONS\n"
+                                  "should only be used with a sight radius of 1.");
 
                 int index = combo->findData(value);
                 if (index != -1) {
@@ -1464,15 +1474,22 @@ void MainWindow::updateSelectedObjects() {
                     combo->addItem(value);
                 }
                 combo->addItems(*editor->project->varNames);
-                combo->setToolTip("The variable by which the script is triggered. The script is triggered when this variable's value matches 'Var Value'.");
-            } else if (key == "script_var_value")  {
+                combo->setToolTip("The variable by which the script is triggered.\n"
+                                  "The script is triggered when this variable's value matches 'Var Value'.");
+            } else if (key == "script_var_value") {
                 combo->setToolTip("The variable's value which triggers the script.");
             } else if (key == "movement_type") {
                 if (!editor->project->movementTypes->contains(value)) {
                     combo->addItem(value);
                 }
+                connect(combo, static_cast<void (QComboBox::*)(const QString &)>(&QComboBox::currentTextChanged),
+                        this, [this, item, frame](QString value){
+                            item->event->setFrameFromMovement(editor->project->facingDirections.value(value));
+                            item->updatePixmap();
+                });
                 combo->addItems(*editor->project->movementTypes);
-                combo->setToolTip("The object's natural movement behavior when the player is not interacting with it.");
+                combo->setToolTip("The object's natural movement behavior when\n"
+                                  "the player is not interacting with it.");
             } else if (key == "weather") {
                 if (!editor->project->coordEventWeatherNames->contains(value)) {
                     combo->addItem(value);
@@ -1484,27 +1501,36 @@ void MainWindow::updateSelectedObjects() {
                     combo->addItem(value);
                 }
                 combo->addItems(*editor->project->secretBaseIds);
-                combo->setToolTip("The secret base id which is inside this secret base entrance. Secret base ids are meant to be unique to each and every secret base entrance.");
+                combo->setToolTip("The secret base id which is inside this secret\n"
+                                  "base entrance. Secret base ids are meant to be\n"
+                                  "unique to each and every secret base entrance.");
             } else if (key == "fruit_tree_id") {
                 if (!editor->project->fruitTreeIds->contains(value)) {
                     combo->addItem(value);
                 }
                 combo->addItems(*editor->project->fruitTreeIds);
-                combo->setToolTip("The fruit tree id. Fruit tree ids are meant to be unique to each and every tree.");
+                combo->setToolTip("The fruit tree id. Fruit tree ids are meant to be\n"
+                                  "unique to each and every tree.");
             } else if (key == "player_facing_direction") {
                 if (!editor->project->bgEventFacingDirections->contains(value)) {
                     combo->addItem(value);
                 }
                 combo->addItems(*editor->project->bgEventFacingDirections);
-                combo->setToolTip("The direction which the player must be facing to be able to interact with this event.");
+                combo->setToolTip("The direction which the player must be facing\n"
+                                  "to be able to interact with this event.");
             } else if (key == "radius_x") {
-                combo->setToolTip("The maximum number of metatiles this object is allowed to move left or right during its normal movement behavior actions.");
+                combo->setToolTip("The maximum number of metatiles this object\n"
+                                  "is allowed to move left or right during its\n"
+                                  "normal movement behavior actions.");
             } else if (key == "radius_y") {
-                combo->setToolTip("The maximum number of metatiles this object is allowed to move up or down during its normal movement behavior actions.");
+                combo->setToolTip("The maximum number of metatiles this object\n"
+                                  "is allowed to move up or down during its\n"
+                                  "normal movement behavior actions.");
             } else if (key == "script_label") {
                 combo->setToolTip("The script which is executed with this event.");
             } else if (key == "sight_radius_tree_id") {
-                combo->setToolTip("The maximum sight range of a trainer, OR the unique id of the berry tree.");
+                combo->setToolTip("The maximum sight range of a trainer,\n"
+                                  "OR the unique id of the berry tree.");
             } else {
                 combo->addItem(value);
             }
@@ -1733,9 +1759,7 @@ void MainWindow::eventTabChanged(int index)
 void MainWindow::selectedEventIndexChanged(int index)
 {
     QString group = getEventGroupFromTabWidget(ui->tabWidget_EventType->currentWidget());
-    int event_offs;
-    if (group == "warp_event_group") { event_offs = 0; }
-    else { event_offs = 1; }
+    int event_offs = group == "warp_event_group" ? 0 : 1;
     Event *event = editor->map->events.value(group).at(index - event_offs);
     DraggablePixmapItem *selectedEvent = nullptr;
     for (QGraphicsItem *child : editor->events_group->childItems()) {
@@ -1756,12 +1780,28 @@ void MainWindow::on_horizontalSlider_CollisionTransparency_valueChanged(int valu
     this->editor->collision_item->draw(true);
 }
 
+// TODO: connect this to the DEL key when undo/redo history is extended to events
 void MainWindow::on_toolButton_deleteObject_clicked()
 {
     if (editor && editor->selected_events) {
         if (editor->selected_events->length()) {
+            DraggablePixmapItem *next_selected_event = nullptr;
             for (DraggablePixmapItem *item : *editor->selected_events) {
-                if (item->event->get("event_group_type") != "heal_event_group") {
+                QString event_group = item->event->get("event_group_type");
+                int index = editor->map->events.value(event_group).indexOf(item->event);
+                if (index != editor->map->events.value(event_group).size() - 1)
+                    index++;
+                else
+                    index--;
+                Event *event = editor->map->events.value(event_group).at(index);
+                if (event_group != "heal_event_group") {
+                    for (QGraphicsItem *child : editor->events_group->childItems()) {
+                        DraggablePixmapItem *event_item = static_cast<DraggablePixmapItem *>(child);
+                        if (event_item->event == event) {
+                            next_selected_event = event_item;
+                            break;
+                        }
+                    }
                     editor->deleteEvent(item->event);
                     if (editor->scene->items().contains(item)) {
                         editor->scene->removeItem(item);
@@ -1772,7 +1812,12 @@ void MainWindow::on_toolButton_deleteObject_clicked()
                     logWarn(QString("Cannot delete event of type '%1'").arg(item->event->get("event_type")));
                 }
             }
-            updateObjects();
+            if (next_selected_event) {
+                editor->selectMapEvent(next_selected_event);
+            }
+            else {
+                updateObjects();
+            }
         }
     }
 }
@@ -1786,7 +1831,10 @@ void MainWindow::on_toolButton_Paint_clicked()
 {
     editor->map_edit_mode = "paint";
     editor->settings->mapCursor = QCursor(QPixmap(":/icons/pencil_cursor.ico"), 10, 10);
-    editor->cursorMapTileRect->stopSingleTileMode();
+
+    // do not stop single tile mode when editing collision
+    if (ui->tabWidget_2->currentIndex() == 0)
+        editor->cursorMapTileRect->stopSingleTileMode();
 
     ui->scrollArea->setHorizontalScrollBarPolicy(Qt::ScrollBarAsNeeded);
     ui->scrollArea->setVerticalScrollBarPolicy(Qt::ScrollBarAsNeeded);
@@ -2118,6 +2166,24 @@ void MainWindow::on_horizontalSlider_MetatileZoom_valueChanged(int value) {
 
     ui->graphicsView_currentMetatileSelection->setMatrix(matrix);
     currentMetatilesSelectionChanged();
+}
+
+void MainWindow::on_actionRegion_Map_Editor_triggered() {
+    if (!this->regionMapEditor) {
+        this->regionMapEditor = new RegionMapEditor(this, this->editor->project);
+        this->regionMapEditor->loadRegionMapData();
+        this->regionMapEditor->loadCityMaps();
+        connect(this->regionMapEditor, &QObject::destroyed, [=](QObject *) { this->regionMapEditor = nullptr; });
+        this->regionMapEditor->setAttribute(Qt::WA_DeleteOnClose);
+    }
+
+    if (!this->regionMapEditor->isVisible()) {
+        this->regionMapEditor->show();
+    } else if (this->regionMapEditor->isMinimized()) {
+        this->regionMapEditor->showNormal();
+    } else {
+        this->regionMapEditor->activateWindow();
+    }
 }
 
 void MainWindow::closeEvent(QCloseEvent *event) {

@@ -20,6 +20,7 @@ public:
     static QString HealLocation;
 };
 
+class Project;
 class Event
 {
 public:
@@ -57,16 +58,16 @@ public:
         values.insert(key, value);
     }
 
-    static Event* createNewEvent(QString, QString);
-    static Event* createNewObjectEvent();
+    static Event* createNewEvent(QString, QString, Project*);
+    static Event* createNewObjectEvent(Project*);
     static Event* createNewWarpEvent(QString);
     static Event* createNewHealLocationEvent(QString);
-    static Event* createNewTriggerEvent();
-    static Event* createNewWeatherTriggerEvent();
-    static Event* createNewSignEvent();
-    static Event* createNewHiddenItemEvent();
-    static Event* createNewSecretBaseEvent();
-    static Event* createNewFruitTreeEvent();
+    static Event* createNewTriggerEvent(Project*);
+    static Event* createNewWeatherTriggerEvent(Project*);
+    static Event* createNewSignEvent(Project*);
+    static Event* createNewHiddenItemEvent(Project*);
+    static Event* createNewSecretBaseEvent(Project*);
+    static Event* createNewFruitTreeEvent(Project*);
 
     QJsonObject buildObjectEventJSON();
     QJsonObject buildWarpEventJSON(QMap<QString, QString>*);
@@ -76,18 +77,21 @@ public:
     QJsonObject buildHiddenItemEventJSON();
     QJsonObject buildSecretBaseEventJSON();
     QJsonObject buildFruitTreeEventJSON();
-    void setPixmapFromSpritesheet(QImage, int, int);
+    void setPixmapFromSpritesheet(QImage, int, int, int, bool);
     int getPixelX();
     int getPixelY();
     QMap<QString, bool> getExpectedFields();
     void readCustomValues(QJsonObject values);
     void addCustomValuesTo(QJsonObject *obj);
+    void setFrameFromMovement(QString);
 
     QMap<QString, QString> values;
     QMap<QString, QString> customValues;
     QPixmap pixmap;
     int spriteWidth;
     int spriteHeight;
+    int frame = 0;
+    bool hFlip = false;
     bool usingSprite;
 };
 

@@ -4,6 +4,7 @@
 #include "map.h"
 #include "blockdata.h"
 #include "heallocation.h"
+#include "event.h"
 
 #include <QStringList>
 #include <QList>
@@ -29,7 +30,9 @@ public:
     QString layoutsLabel;
     QMap<QString, MapLayout*> mapLayouts;
     QMap<QString, MapLayout*> mapLayoutsMaster;
-    QStringList *regionMapSections = nullptr;
+    QMap<QString, QString> *mapSecToMapHoverName;
+    QMap<QString, int> mapSectionNameToValue;
+    QMap<int, QString> mapSectionValueToName;
     QStringList *itemNames = nullptr;
     QStringList *flagNames = nullptr;
     QStringList *varNames = nullptr;
@@ -43,6 +46,15 @@ public:
     QStringList *bgEventFacingDirections = nullptr;
     QMap<QString, int> metatileBehaviorMap;
     QMap<int, QString> metatileBehaviorMapInverse;
+    QMap<QString, QString> facingDirections;
+
+    struct DataQualifiers
+    {
+        bool isStatic;
+        bool isConst;
+    };
+    DataQualifiers getDataQualifiers(QString, QString);
+    QMap<QString, DataQualifiers> dataQualifiers;
 
     QMap<QString, Map*> *map_cache;
     Map* loadMap(QString);
@@ -106,6 +118,7 @@ public:
     void readFlagNames();
     void readVarNames();
     void readMovementTypes();
+    void readInitialFacingDirections();
     void readMapTypes();
     void readMapBattleScenes();
     void readWeatherNames();
@@ -114,6 +127,7 @@ public:
     void readFruitTreeIds();
     void readBgEventFacingDirections();
     void readMetatileBehaviors();
+    void readHealLocations();
 
     void loadEventPixmaps(QList<Event*> objects);
     QMap<QString, int> getEventObjGfxConstants();
@@ -127,6 +141,7 @@ public:
     QStringList readCArray(QString text, QString label);
     QString readCIncbin(QString text, QString label);
     QMap<QString, int> readCDefines(QString text, QStringList prefixes);
+    QMap<QString, QString> readNamedIndexCArray(QString text, QString label);
 
     static int getNumTilesPrimary();
     static int getNumTilesTotal();
@@ -134,6 +149,7 @@ public:
     static int getNumMetatilesTotal();
     static int getNumPalettesPrimary();
     static int getNumPalettesTotal();
+    static bool tryParseJsonFile(QJsonDocument *out, QString filepath);
 private:
     void updateMapLayout(Map*);
     void readCDefinesSorted(QString, QStringList, QStringList*);

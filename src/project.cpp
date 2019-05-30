@@ -4,9 +4,9 @@
 #include "historyitem.h"
 #include "log.h"
 #include "parseutil.h"
+#include "paletteutil.h"
 #include "tile.h"
 #include "tileset.h"
-#include "event.h"
 
 #include <QDir>
 #include <QJsonArray>
@@ -31,7 +31,6 @@ Project::Project()
     groupNames = new QStringList;
     map_groups = new QMap<QString, int>;
     mapNames = new QStringList;
-    regionMapSections = new QStringList;
     itemNames = new QStringList;
     flagNames = new QStringList;
     varNames = new QStringList;
@@ -188,14 +187,12 @@ bool Project::loadMapData(Map* map) {
     }
 
     QString mapFilepath = QString("%1/data/maps/%2/map.json").arg(root).arg(map->name);
-    QFile mapFile(mapFilepath);
-    if (!mapFile.open(QIODevice::ReadOnly)) {
-        logError(QString("Error: Could not open %1 for reading").arg(mapFilepath));
+    QJsonDocument mapDoc;
+    if (!tryParseJsonFile(&mapDoc, mapFilepath)) {
+        logError(QString("Failed to read map data from %1").arg(mapFilepath));
         return false;
     }
 
-    QByteArray mapData = mapFile.readAll();
-    QJsonDocument mapDoc = QJsonDocument::fromJson(mapData);
     QJsonObject mapObj = mapDoc.object();
 
     map->song = mapObj["music"].toString();
@@ -396,14 +393,12 @@ QString Project::readMapLayoutId(QString map_name) {
     }
 
     QString mapFilepath = QString("%1/data/maps/%2/map.json").arg(root).arg(map_name);
-    QFile mapFile(mapFilepath);
-    if (!mapFile.open(QIODevice::ReadOnly)) {
-        logError(QString("Error: Could not open %1 for reading").arg(mapFilepath));
+    QJsonDocument mapDoc;
+    if (!tryParseJsonFile(&mapDoc, mapFilepath)) {
+        logError(QString("Failed to read map layout id from %1").arg(mapFilepath));
         return QString::null;
     }
 
-    QByteArray mapData = mapFile.readAll();
-    QJsonDocument mapDoc = QJsonDocument::fromJson(mapData);
     QJsonObject mapObj = mapDoc.object();
     return mapObj["layout"].toString();
 }
@@ -414,14 +409,12 @@ QString Project::readMapLocation(QString map_name) {
     }
 
     QString mapFilepath = QString("%1/data/maps/%2/map.json").arg(root).arg(map_name);
-    QFile mapFile(mapFilepath);
-    if (!mapFile.open(QIODevice::ReadOnly)) {
-        logError(QString("Error: Could not open %1 for reading").arg(mapFilepath));
+    QJsonDocument mapDoc;
+    if (!tryParseJsonFile(&mapDoc, mapFilepath)) {
+        logError(QString("Failed to read map's region map section from %1").arg(mapFilepath));
         return QString::null;
     }
 
-    QByteArray mapData = mapFile.readAll();
-    QJsonDocument mapDoc = QJsonDocument::fromJson(mapData);
     QJsonObject mapObj = mapDoc.object();
     return mapObj["region_map_section"].toString();
 }
@@ -468,14 +461,12 @@ void Project::readMapLayouts() {
     mapLayoutsTable.clear();
 
     QString layoutsFilepath = QString("%1/data/layouts/layouts.json").arg(root);
-    QFile layoutsFile(layoutsFilepath);
-    if (!layoutsFile.open(QIODevice::ReadOnly)) {
-        logError(QString("Error: Could not open %1 for reading").arg(layoutsFilepath));
+    QJsonDocument layoutsDoc;
+    if (!tryParseJsonFile(&layoutsDoc, layoutsFilepath)) {
+        logError(QString("Failed to read map layouts from %1").arg(layoutsFilepath));
         return;
     }
 
-    QByteArray layoutsData = layoutsFile.readAll();
-    QJsonDocument layoutsDoc = QJsonDocument::fromJson(layoutsData);
     QJsonObject layoutsObj = layoutsDoc.object();
     layoutsLabel = layoutsObj["layouts_table_label"].toString();
 
@@ -618,9 +609,9 @@ void Project::saveMapConstantsHeader() {
 // saves heal location coords in root + /src/data/heal_locations.h
 // and indexes as defines in root + /include/constants/heal_locations.h
 void Project::saveHealLocationStruct(Map *map) {
-    QString tab = QString("    ");
-
-    QString data_text = QString("static const struct HealLocation sHealLocations[] =\n{\n");
+    QString data_text = QString("%1%2struct HealLocation sHealLocations[] =\n{\n")
+        .arg(dataQualifiers.value("heal_locations").isStatic ? "static " : "")
+        .arg(dataQualifiers.value("heal_locations").isConst ? "const " : "");
 
     QString constants_text = QString("#ifndef GUARD_CONSTANTS_HEAL_LOCATIONS_H\n");
     constants_text += QString("#define GUARD_CONSTANTS_HEAL_LOCATIONS_H\n\n");
@@ -734,20 +725,10 @@ void Project::saveTilesetTilesImage(Tileset *tileset) {
 }
 
 void Project::saveTilesetPalettes(Tileset *tileset, bool primary) {
+    PaletteUtil parser;
     for (int i = 0; i < Project::getNumPalettesTotal(); i++) {
         QString filepath = tileset->palettePaths.at(i);
-        QString content = "JASC-PAL\r\n";
-        content += "0100\r\n";
-        content += "16\r\n";
-        for (int j = 0; j < 16; j++) {
-            QRgb color = tileset->palettes->at(i).at(j);
-            content += QString("%1 %2 %3\r\n")
-                    .arg(qRed(color))
-                    .arg(qGreen(color))
-                    .arg(qBlue(color));
-        }
-
-        saveTextFile(filepath, content);
+        parser.writeJASC(filepath, tileset->palettes->at(i).toVector(), 0, 16);
     }
 }
 
@@ -893,15 +874,20 @@ void Project::saveMap(Map *map) {
         }
     }
 
-    // Append to "layouts" array in data/layouts/layouts.json.
     QString layoutsFilepath = QString("%1/data/layouts/layouts.json").arg(root);
+    QJsonDocument layoutsDoc;
+    if (!tryParseJsonFile(&layoutsDoc, layoutsFilepath)) {
+        logError(QString("Failed to read map layouts from %1").arg(layoutsFilepath));
+        return;
+    }
+
     QFile layoutsFile(layoutsFilepath);
     if (!layoutsFile.open(QIODevice::ReadWrite)) {
         logError(QString("Error: Could not open %1 for read/write").arg(layoutsFilepath));
         return;
     }
-    QByteArray layoutsData = layoutsFile.readAll();
-    QJsonDocument layoutsDoc = QJsonDocument::fromJson(layoutsData);
+
+    // Append to "layouts" array in data/layouts/layouts.json.
     QJsonObject layoutsObj = layoutsDoc.object();
     QJsonArray layoutsArr = layoutsObj["layouts"].toArray();
     QJsonObject newLayoutObj;
@@ -915,6 +901,7 @@ void Project::saveMap(Map *map) {
     newLayoutObj["blockdata_filepath"] = map->layout->blockdata_path;
     layoutsArr.append(newLayoutObj);
     layoutsFile.write(layoutsDoc.toJson());
+    layoutsFile.close();
 
     // Create map.json for map data.
     QString mapFilepath = QString("%1/map.json").arg(mapDataDir);
@@ -1029,6 +1016,7 @@ void Project::saveMap(Map *map) {
 
     QJsonDocument mapDoc(mapObj);
     mapFile.write(mapDoc.toJson());
+    mapFile.close();
 
     saveLayoutBorder(map);
     saveLayoutBlockdata(map);
@@ -1298,14 +1286,12 @@ void Project::deleteFile(QString path) {
 
 void Project::readMapGroups() {
     QString mapGroupsFilepath = QString("%1/data/maps/map_groups.json").arg(root);
-    QFile mapGroupsFile(mapGroupsFilepath);
-    if (!mapGroupsFile.open(QIODevice::ReadOnly)) {
-        logError(QString("Error: Could not open %1 for reading").arg(mapGroupsFilepath));
+    QJsonDocument mapGroupsDoc;
+    if (!tryParseJsonFile(&mapGroupsDoc, mapGroupsFilepath)) {
+        logError(QString("Failed to read map groups from %1").arg(mapGroupsFilepath));
         return;
     }
 
-    QByteArray mapGroupsData = mapGroupsFile.readAll();
-    QJsonDocument mapGroupsDoc = QJsonDocument::fromJson(mapGroupsData);
     QJsonObject mapGroupsObj = mapGroupsDoc.object();
     QJsonArray mapGroupOrder = mapGroupsObj["group_order"].toArray();
 
@@ -1337,11 +1323,6 @@ void Project::readMapGroups() {
     groupNames = groups;
     groupedMapNames = groupedMaps;
     mapNames = maps;
-
-    QString hltext = readTextFile(root + QString("/src/data/heal_locations.h"));
-    QList<HealLocation>* hl = ParseUtil().parseHealLocs(hltext);
-    flyableMaps = *hl;
-    delete hl;
 }
 
 Map* Project::addNewMapToGroup(QString mapName, int groupNum) {
@@ -1422,6 +1403,18 @@ QStringList Project::getVisibilities() {
         names.append(QString("%1").arg(i));
     }
     return names;
+}
+
+Project::DataQualifiers Project::getDataQualifiers(QString text, QString label) {
+    Project::DataQualifiers qualifiers;
+
+    QRegularExpression regex(QString("\\s*(?<static>static\\s*)?(?<const>const\\s*)?[A-Za-z0-9_\\s]*\\b%1\\b").arg(label));
+    QRegularExpressionMatch match = regex.match(text);
+
+    qualifiers.isStatic = match.captured("static").isNull() ? false : true;
+    qualifiers.isConst = match.captured("const").isNull() ? false : true;
+
+    return qualifiers;
 }
 
 QMap<QString, QStringList> Project::getTilesetLabels() {
@@ -1525,8 +1518,36 @@ void Project::readTilesetProperties() {
 
 void Project::readRegionMapSections() {
     QString filepath = root + "/include/constants/region_map_sections.h";
-    QStringList prefixes = (QStringList() << "MAPSEC_");
-    readCDefinesSorted(filepath, prefixes, regionMapSections);
+    this->mapSectionNameToValue.clear();
+    this->mapSectionValueToName.clear();
+    QString text = readTextFile(filepath);
+    if (!text.isNull()) {
+        QStringList prefixes = (QStringList() << "MAPSEC_");
+        this->mapSectionNameToValue = readCDefines(text, prefixes);
+        for (QString defineName : this->mapSectionNameToValue.keys()) {
+            this->mapSectionValueToName.insert(this->mapSectionNameToValue[defineName], defineName);
+        }
+    } else {
+        logError(QString("Failed to read C defines file: '%1'").arg(filepath));
+    }
+}
+
+void Project::readHealLocations() {
+    QString text = readTextFile(root + "/src/data/heal_locations.h");
+    text.replace(QRegularExpression("//.*?(\r\n?|\n)|/\\*.*?\\*/", QRegularExpression::DotMatchesEverythingOption), "");
+
+    dataQualifiers.insert("heal_locations", getDataQualifiers(text, "sHealLocations"));
+
+    QRegularExpression regex("MAP_GROUP\\((?<map>[A-Za-z0-9_]*)\\),\\s+MAP_NUM\\((\\1)\\),\\s+(?<x>[0-9A-Fa-fx]*),\\s+(?<y>[0-9A-Fa-fx]*)");
+    QRegularExpressionMatchIterator iter = regex.globalMatch(text);
+
+    for (int i = 1; iter.hasNext(); i++) {
+        QRegularExpressionMatch match = iter.next();
+        QString mapName = match.captured("map");
+        unsigned x = match.captured("x").toUShort();
+        unsigned y = match.captured("y").toUShort();
+        flyableMaps.append(HealLocation(mapName, i, x, y));
+    }
 }
 
 void Project::readItemNames() {
@@ -1551,6 +1572,11 @@ void Project::readMovementTypes() {
     QString filepath = root + "/include/constants/event_object_movement_constants.h";
     QStringList prefixes = (QStringList() << "MOVEMENT_TYPE_");
     readCDefinesSorted(filepath, prefixes, movementTypes);
+}
+
+void Project::readInitialFacingDirections() {
+    QString text = readTextFile(root + "/src/event_object_movement.c");
+    facingDirections = readNamedIndexCArray(text, "gInitialMovementTypeFacingDirections");
 }
 
 void Project::readMapTypes() {
@@ -1579,7 +1605,7 @@ void Project::readCoordEventWeatherNames() {
 
 void Project::readSecretBaseIds() {
     QString filepath = root + "/include/constants/secret_bases.h";
-    QStringList prefixes = (QStringList() << "SECRET_BASE_");
+    QStringList prefixes = (QStringList() << "SECRET_BASE_[A-Za-z0-9_]*_[0-9]+");
     readCDefinesSorted(filepath, prefixes, secretBaseIds);
 }
 
@@ -1732,7 +1758,7 @@ void Project::loadEventPixmaps(QList<Event*> objects) {
                             spriteHeight = dimensionMatch.captured(2).toInt();
                         }
                     }
-                    object->setPixmapFromSpritesheet(spritesheet, spriteWidth, spriteHeight);
+                    object->setPixmapFromSpritesheet(spritesheet, spriteWidth, spriteHeight, object->frame, object->hFlip);
                 }
             }
         }
@@ -1784,6 +1810,25 @@ QStringList Project::readCArray(QString text, QString label) {
     return list;
 }
 
+QMap<QString, QString> Project::readNamedIndexCArray(QString text, QString label) {
+    QMap<QString, QString> map;
+
+    QRegularExpression re_text(QString("\\b%1\\b\\s*\\[?\\s*\\]?\\s*=\\s*\\{([^\\}]*)\\}").arg(label));
+    text = re_text.match(text).captured(1).replace(QRegularExpression("\\s*"), "");
+    
+    QRegularExpression re("\\[(?<index>[A-Za-z1-9_]*)\\]=(?<value>[A-Za-z1-9_]*)");
+    QRegularExpressionMatchIterator iter = re.globalMatch(text);
+
+    while (iter.hasNext()) {
+        QRegularExpressionMatch match = iter.next();
+        QString key = match.captured("index");
+        QString value = match.captured("value");
+        map.insert(key, value);
+    }
+
+    return map;
+}
+
 QString Project::readCIncbin(QString text, QString label) {
     QString path;
 
@@ -1820,7 +1865,7 @@ QMap<QString, int> Project::readCDefines(QString text, QStringList prefixes) {
         int value = parser.evaluateDefine(expression, &allDefines);
         allDefines.insert(name, value);
         for (QString prefix : prefixes) {
-            if (name.startsWith(prefix)) {
+            if (name.startsWith(prefix) || QRegularExpression(prefix).match(name).hasMatch()) {
                 filteredDefines.insert(name, value);
             }
         }
@@ -1856,4 +1901,25 @@ int Project::getNumPalettesPrimary()
 int Project::getNumPalettesTotal()
 {
     return Project::num_pals_total;
+}
+
+bool Project::tryParseJsonFile(QJsonDocument *out, QString filepath)
+{
+    QFile file(filepath);
+    if (!file.open(QIODevice::ReadOnly)) {
+        logError(QString("Error: Could not open %1 for reading").arg(filepath));
+        return false;
+    }
+
+    QByteArray data = file.readAll();
+    QJsonParseError parseError;
+    QJsonDocument jsonDoc = QJsonDocument::fromJson(data, &parseError);
+    file.close();
+    if (parseError.error != QJsonParseError::NoError) {
+        logError(QString("Error: Failed to parse json file %1: %2").arg(filepath).arg(parseError.errorString()));
+        return false;
+    }
+
+    *out = jsonDoc;
+    return true;
 }

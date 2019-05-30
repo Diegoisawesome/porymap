@@ -8,6 +8,7 @@
 #include <QCheckBox>
 #include <QPainter>
 #include <QMouseEvent>
+#include <QDir>
 #include <math.h>
 
 static bool selectingEvent = false;
@@ -761,6 +762,8 @@ void Editor::displayMapEvents() {
 
 DraggablePixmapItem *Editor::addMapEvent(Event *event) {
     DraggablePixmapItem *object = new DraggablePixmapItem(event, this);
+    event->setFrameFromMovement(project->facingDirections.value(event->get("movement_type")));
+    object->updatePixmap();
     if (!event->usingSprite) {
         object->setOpacity(0.7);
     }
@@ -1177,6 +1180,13 @@ void DraggablePixmapItem::mouseDoubleClickEvent(QGraphicsSceneMouseEvent *) {
             emit editor->warpEventDoubleClicked(this->event->get("destination_map_name"), this->event->get("destination_warp"));
         }
     }
+    else if (this->event->get("event_type") == EventType::SecretBase) {
+        QString baseId = this->event->get("secret_base_id");
+        QString destMap = editor->project->mapConstantsToMapNames->value("MAP_" + baseId.left(baseId.lastIndexOf("_")));
+        if (destMap != NONE_MAP_NAME) {
+            emit editor->warpEventDoubleClicked(destMap, "0");
+        }
+    }
 }
 
 QList<DraggablePixmapItem *> *Editor::getObjects() {
@@ -1195,7 +1205,7 @@ QList<DraggablePixmapItem *> *Editor::getObjects() {
 
 void Editor::redrawObject(DraggablePixmapItem *item) {
     if (item) {
-        item->setPixmap(item->event->pixmap);
+        item->setPixmap(item->event->pixmap.copy(item->event->frame * item->event->spriteWidth % item->event->pixmap.width(), 0, item->event->spriteWidth, item->event->spriteHeight));
         item->setShapeMode(QGraphicsPixmapItem::BoundingRectShape);
         if (selected_events && selected_events->contains(item)) {
             QImage image = item->pixmap().toImage();
@@ -1205,6 +1215,7 @@ void Editor::redrawObject(DraggablePixmapItem *item) {
             painter.end();
             item->setPixmap(QPixmap::fromImage(image));
         }
+        item->updatePosition();
     }
 }
 
@@ -1232,12 +1243,13 @@ void Editor::selectMapEvent(DraggablePixmapItem *object, bool toggle) {
             selected_events->append(object);
         }
         updateSelectedEvents();
+        object->setZValue(object->y() + 1);
     }
 }
 
 DraggablePixmapItem* Editor::addNewEvent(QString event_type) {
     if (project && map) {
-        Event *event = Event::createNewEvent(event_type, map->name);
+        Event *event = Event::createNewEvent(event_type, map->name, project);
         event->put("map_name", map->name);
         if (event_type == "event_heal_location") {
             HealLocation hl = HealLocation::fromEvent(event);
@@ -1274,6 +1286,5 @@ void Editor::objectsView_onMousePress(QMouseEvent *event) {
         selected_events->append(first);
         updateSelectedEvents();
     }
-
     selectingEvent = false;
 }

@@ -1,7 +1,6 @@
 #include "history.h"
 #include "historyitem.h"
 #include "map.h"
-#include "project.h"
 #include "imageproviders.h"
 
 #include <QTime>
@@ -341,7 +340,6 @@ void Map::_floodFillCollisionElevation(int x, int y, uint16_t collision, uint16_
             }
     }
 }
-
 
 void Map::undo() {
     HistoryItem *commit = metatileHistory.back();
