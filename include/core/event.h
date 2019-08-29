@@ -10,6 +10,7 @@ class EventType
 {
 public:
     static QString Object;
+    static QString ObjectClone;
     static QString Warp;
     static QString Trigger;
     static QString WeatherTrigger;
@@ -51,6 +52,9 @@ public:
     uint16_t getU16(QString key) {
         return values.value(key).toUShort(nullptr, 0);
     }
+    int16_t getS16(QString key) {
+        return values.value(key).toShort(nullptr, 0);
+    }
     void put(QString key, int value) {
         put(key, QString("%1").arg(value));
     }
@@ -60,6 +64,7 @@ public:
 
     static Event* createNewEvent(QString, QString, Project*);
     static Event* createNewObjectEvent(Project*);
+    static Event* createNewObjectCloneEvent(QString);
     static Event* createNewWarpEvent(QString);
     static Event* createNewHealLocationEvent(QString);
     static Event* createNewTriggerEvent(Project*);
@@ -70,6 +75,7 @@ public:
     static Event* createNewFruitTreeEvent(Project*);
 
     QJsonObject buildObjectEventJSON();
+    QJsonObject buildObjectCloneEventJSON(QMap<QString, QString>*);
     QJsonObject buildWarpEventJSON(QMap<QString, QString>*);
     QJsonObject buildTriggerEventJSON();
     QJsonObject buildWeatherTriggerEventJSON();

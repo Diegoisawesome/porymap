@@ -12,6 +12,7 @@ public:
     QString getSelectedEventType();
 public slots:
     void newObject();
+    void newObjectClone();
     void newWarp();
     void newHealLocation();
     void newTrigger();
@@ -25,6 +26,7 @@ signals:
 private:
     QString selectedEventType;
     QAction *newObjectAction;
+    QAction *newObjectCloneAction;
     QAction *newWarpAction;
     QAction *newHealLocationAction;
     QAction *newTriggerAction;

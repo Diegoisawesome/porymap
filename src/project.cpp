@@ -218,21 +218,47 @@ bool Project::loadMapData(Map* map) {
     QJsonArray objectEventsArr = mapObj["object_events"].toArray();
     for (int i = 0; i < objectEventsArr.size(); i++) {
         QJsonObject event = objectEventsArr[i].toObject();
-        Event *object = new Event(event, EventType::Object);
-        object->put("map_name", map->name);
-        object->put("sprite", event["graphics_id"].toString());
-        object->put("x", QString::number(event["x"].toInt()));
-        object->put("y", QString::number(event["y"].toInt()));
-        object->put("elevation", QString::number(event["elevation"].toInt()));
-        object->put("movement_type", event["movement_type"].toString());
-        object->put("radius_x", QString::number(event["movement_range_x"].toInt()));
-        object->put("radius_y", QString::number(event["movement_range_y"].toInt()));
-        object->put("trainer_type", event["trainer_type"].toString());
-        object->put("sight_radius_tree_id", event["trainer_sight_or_berry_tree_id"].toString());
-        object->put("script_label", event["script"].toString());
-        object->put("event_flag", event["flag"].toString());
-        object->put("event_group_type", "object_event_group");
-        map->events["object_event_group"].append(object);
+        QString type = event["type"].toString();
+        if (type == "clone")
+        {
+            Event *object = new Event(event, EventType::ObjectClone);
+            object->put("map_name", map->name);
+            object->put("x", QString::number(event["x"].toInt()));
+            object->put("y", QString::number(event["y"].toInt()));
+            object->put("clone_local_id", QString::number(event["source_id"].toInt()));
+
+            // Ensure the source map constant is valid.
+            QString mapConstant = event["source_map"].toString();
+            if (mapConstantsToMapNames->contains(mapConstant)) {
+                object->put("clone_map_name", mapConstantsToMapNames->value(mapConstant));
+                object->put("event_group_type", "object_event_group");
+                map->events["object_event_group"].append(object);
+            } else if (mapConstant == NONE_MAP_CONSTANT) {
+                object->put("clone_map_name", NONE_MAP_NAME);
+                object->put("event_group_type", "object_event_group");
+                map->events["object_event_group"].append(object);
+            } else {
+                logError(QString("Destination map constant '%1' is invalid for clone").arg(mapConstant));
+            }
+        }
+        else if (type == "original")
+        {
+            Event *object = new Event(event, EventType::Object);
+            object->put("map_name", map->name);
+            object->put("sprite", event["graphics_id"].toString());
+            object->put("x", QString::number(event["x"].toInt()));
+            object->put("y", QString::number(event["y"].toInt()));
+            object->put("elevation", QString::number(event["elevation"].toInt()));
+            object->put("movement_type", event["movement_type"].toString());
+            object->put("radius_x", QString::number(event["movement_range_x"].toInt()));
+            object->put("radius_y", QString::number(event["movement_range_y"].toInt()));
+            object->put("trainer_type", event["trainer_type"].toString());
+            object->put("sight_radius_tree_id", event["trainer_sight_or_berry_tree_id"].toString());
+            object->put("script_label", event["script"].toString());
+            object->put("event_flag", event["flag"].toString());
+            object->put("event_group_type", "object_event_group");
+            map->events["object_event_group"].append(object);
+        }
     }
 
     map->events["warp_event_group"].clear();
@@ -951,9 +977,15 @@ void Project::saveMap(Map *map) {
         // Object events
         QJsonArray objectEventsArr;
         for (int i = 0; i < map->events["object_event_group"].length(); i++) {
-            Event *object_event = map->events["object_event_group"].value(i);
-            QJsonObject eventObj = object_event->buildObjectEventJSON();
-            objectEventsArr.append(eventObj);
+            Event *event = map->events["object_event_group"].value(i);
+            QString event_type = event->get("event_type");
+            if (event_type == EventType::Object) {
+                QJsonObject eventObj = event->buildObjectEventJSON();
+                objectEventsArr.append(eventObj);
+            } else if (event_type == EventType::ObjectClone) {
+                QJsonObject cloneObj = event->buildObjectCloneEventJSON(mapNamesToMapConstants);
+                objectEventsArr.append(cloneObj);
+            }
         }
         mapObj["object_events"] = objectEventsArr;
 
@@ -1718,7 +1750,7 @@ void Project::loadEventPixmaps(QList<Event*> objects) {
         object->spriteHeight = 16;
         object->usingSprite = false;
         QString event_type = object->get("event_type");
-        if (event_type == EventType::Object) {
+        if (event_type == EventType::Object || event_type == EventType::ObjectClone) {
             object->pixmap = QPixmap(":/images/Entities_16x16.png").copy(0, 0, 16, 16);
         } else if (event_type == EventType::Warp) {
             object->pixmap = QPixmap(":/images/Entities_16x16.png").copy(16, 0, 16, 16);

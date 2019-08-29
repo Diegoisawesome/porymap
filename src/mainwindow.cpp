@@ -1338,6 +1338,8 @@ void MainWindow::updateSelectedObjects() {
         QMap<QString, QString> field_labels;
         field_labels["script_label"] = "Script";
         field_labels["event_flag"] = "Event Flag";
+        field_labels["clone_local_id"] = "Source Object ID";
+        field_labels["clone_map_name"] = "Source Object Map";
         field_labels["movement_type"] = "Movement";
         field_labels["radius_x"] = "Movement Radius X";
         field_labels["radius_y"] = "Movement Radius Y";
@@ -1382,6 +1384,14 @@ void MainWindow::updateSelectedObjects() {
             fields << "event_flag";
             fields << "trainer_type";
             fields << "sight_radius_tree_id";
+        }
+        else if (event_type == EventType::ObjectClone) {
+
+            frame->ui->label_z->setVisible(false);
+            frame->ui->spinBox_z->setVisible(false);
+
+            fields << "clone_local_id";
+            fields << "clone_map_name";
         }
         else if (event_type == EventType::Warp) {
             fields << "destination_map_name";
@@ -1511,6 +1521,14 @@ void MainWindow::updateSelectedObjects() {
                 combo->addItems(*editor->project->fruitTreeIds);
                 combo->setToolTip("The fruit tree id. Fruit tree ids are meant to be\n"
                                   "unique to each and every tree.");
+            } else if (key == "clone_local_id") {
+                combo->setToolTip("The local ID of the object event to clone.");
+            } else if (key == "clone_map_name") {
+                if (!editor->project->mapNames->contains(value)) {
+                    combo->addItem(value);
+                }
+                combo->addItems(*editor->project->mapNames);
+                combo->setToolTip("The map name of the object event to clone.");
             } else if (key == "player_facing_direction") {
                 if (!editor->project->bgEventFacingDirections->contains(value)) {
                     combo->addItem(value);

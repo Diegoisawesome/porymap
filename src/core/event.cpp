@@ -3,6 +3,7 @@
 #include "project.h"
 
 QString EventType::Object = "event_object";
+QString EventType::ObjectClone = "event_object_clone";
 QString EventType::Warp = "event_warp";
 QString EventType::Trigger = "event_trigger";
 QString EventType::WeatherTrigger = "event_weather_trigger";
@@ -31,6 +32,8 @@ Event* Event::createNewEvent(QString event_type, QString map_name, Project *proj
     Event *event = new Event;
     if (event_type == EventType::Object) {
         event = createNewObjectEvent(project);
+    } else if (event_type == EventType::ObjectClone) {
+        event = createNewObjectCloneEvent(map_name);
     } else if (event_type == EventType::Warp) {
         event = createNewWarpEvent(map_name);
     } else if (event_type == EventType::HealLocation) {
@@ -65,10 +68,19 @@ Event* Event::createNewObjectEvent(Project *project)
     event->put("radius_y", 0);
     event->put("script_label", "NULL");
     event->put("event_flag", "0");
-    event->put("replacement", "0");
     event->put("trainer_type", "0");
     event->put("sight_radius_tree_id", 0);
     event->put("elevation", 3);
+    return event;
+}
+
+Event* Event::createNewObjectCloneEvent(QString map_name)
+{
+    Event *event = new Event;
+    event->put("event_group_type", "object_event_group");
+    event->put("event_type", EventType::ObjectClone);
+    event->put("clone_local_id", 0);
+    event->put("clone_map_name", map_name);
     return event;
 }
 
@@ -171,6 +183,7 @@ QMap<QString, bool> Event::getExpectedFields()
     QString type = this->get("event_type");
     if (type == EventType::Object) {
         return QMap<QString, bool> {
+            {"type", true},
             {"graphics_id", true},
             {"x", true},
             {"y", true},
@@ -182,6 +195,14 @@ QMap<QString, bool> Event::getExpectedFields()
             {"trainer_sight_or_berry_tree_id", true},
             {"script", true},
             {"flag", true},
+        };
+    } else if (type == EventType::ObjectClone) {
+        return QMap<QString, bool> {
+            {"type", true},
+            {"x", true},
+            {"y", true},
+            {"source_id", true},
+            {"source_map", true},
         };
     } else if (type == EventType::Warp) {
         return QMap<QString, bool> {
@@ -271,9 +292,10 @@ void Event::addCustomValuesTo(QJsonObject *obj)
 QJsonObject Event::buildObjectEventJSON()
 {
     QJsonObject eventObj;
+    eventObj["type"] = "original";
     eventObj["graphics_id"] = this->get("sprite");
-    eventObj["x"] = this->getU16("x");
-    eventObj["y"] = this->getU16("y");
+    eventObj["x"] = this->getS16("x");
+    eventObj["y"] = this->getS16("y");
     eventObj["elevation"] = this->getInt("elevation");
     eventObj["movement_type"] = this->get("movement_type");
     eventObj["movement_range_x"] = this->getInt("radius_x");
@@ -287,11 +309,24 @@ QJsonObject Event::buildObjectEventJSON()
     return eventObj;
 }
 
+QJsonObject Event::buildObjectCloneEventJSON(QMap<QString, QString> *mapNamesToMapConstants)
+{
+    QJsonObject eventObj;
+    eventObj["type"] = "clone";
+    eventObj["x"] = this->getS16("x");
+    eventObj["y"] = this->getS16("y");
+    eventObj["source_id"] = this->getInt("clone_local_id");
+    eventObj["source_map"] = mapNamesToMapConstants->value(this->get("clone_map_name"));
+    this->addCustomValuesTo(&eventObj);
+
+    return eventObj;
+}
+
 QJsonObject Event::buildWarpEventJSON(QMap<QString, QString> *mapNamesToMapConstants)
 {
     QJsonObject warpObj;
-    warpObj["x"] = this->getU16("x");
-    warpObj["y"] = this->getU16("y");
+    warpObj["x"] = this->getS16("x");
+    warpObj["y"] = this->getS16("y");
     warpObj["elevation"] = this->getInt("elevation");
     warpObj["dest_map"] = mapNamesToMapConstants->value(this->get("destination_map_name"));
     warpObj["dest_warp_id"] = this->getInt("destination_warp");
@@ -304,8 +339,8 @@ QJsonObject Event::buildTriggerEventJSON()
 {
     QJsonObject triggerObj;
     triggerObj["type"] = "trigger";
-    triggerObj["x"] = this->getU16("x");
-    triggerObj["y"] = this->getU16("y");
+    triggerObj["x"] = this->getS16("x");
+    triggerObj["y"] = this->getS16("y");
     triggerObj["elevation"] = this->getInt("elevation");
     triggerObj["var"] = this->get("script_var");
     triggerObj["var_value"] = this->get("script_var_value");
@@ -319,8 +354,8 @@ QJsonObject Event::buildWeatherTriggerEventJSON()
 {
     QJsonObject weatherObj;
     weatherObj["type"] = "weather";
-    weatherObj["x"] = this->getU16("x");
-    weatherObj["y"] = this->getU16("y");
+    weatherObj["x"] = this->getS16("x");
+    weatherObj["y"] = this->getS16("y");
     weatherObj["elevation"] = this->getInt("elevation");
     weatherObj["weather"] = this->get("weather");
     this->addCustomValuesTo(&weatherObj);
@@ -332,8 +367,8 @@ QJsonObject Event::buildSignEventJSON()
 {
     QJsonObject signObj;
     signObj["type"] = "sign";
-    signObj["x"] = this->getU16("x");
-    signObj["y"] = this->getU16("y");
+    signObj["x"] = this->getS16("x");
+    signObj["y"] = this->getS16("y");
     signObj["elevation"] = this->getInt("elevation");
     signObj["player_facing_dir"] = this->get("player_facing_direction");
     signObj["script"] = this->get("script_label");
@@ -346,8 +381,8 @@ QJsonObject Event::buildHiddenItemEventJSON()
 {
     QJsonObject hiddenItemObj;
     hiddenItemObj["type"] = "hidden_item";
-    hiddenItemObj["x"] = this->getU16("x");
-    hiddenItemObj["y"] = this->getU16("y");
+    hiddenItemObj["x"] = this->getS16("x");
+    hiddenItemObj["y"] = this->getS16("y");
     hiddenItemObj["elevation"] = this->getInt("elevation");
     hiddenItemObj["item"] = this->get("item");
     hiddenItemObj["flag"] = this->get("flag");
@@ -360,8 +395,8 @@ QJsonObject Event::buildSecretBaseEventJSON()
 {
     QJsonObject secretBaseObj;
     secretBaseObj["type"] = "secret_base";
-    secretBaseObj["x"] = this->getU16("x");
-    secretBaseObj["y"] = this->getU16("y");
+    secretBaseObj["x"] = this->getS16("x");
+    secretBaseObj["y"] = this->getS16("y");
     secretBaseObj["elevation"] = this->getInt("elevation");
     secretBaseObj["secret_base_id"] = this->get("secret_base_id");
     this->addCustomValuesTo(&secretBaseObj);
@@ -373,8 +408,8 @@ QJsonObject Event::buildFruitTreeEventJSON()
 {
     QJsonObject fruitTreeObj;
     fruitTreeObj["type"] = "fruit_tree";
-    fruitTreeObj["x"] = this->getU16("x");
-    fruitTreeObj["y"] = this->getU16("y");
+    fruitTreeObj["x"] = this->getS16("x");
+    fruitTreeObj["y"] = this->getS16("y");
     fruitTreeObj["elevation"] = this->getInt("elevation");
     fruitTreeObj["fruit_tree_id"] = this->get("fruit_tree_id");
     this->addCustomValuesTo(&fruitTreeObj);
