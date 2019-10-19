@@ -53,7 +53,7 @@ void NewMapPopup::setDefaultValues(int groupNum, QString mapSec) {
     ui->comboBox_NewMap_Secondary_Tileset->addItems(tilesets.value("secondary"));
 
     ui->comboBox_NewMap_Group->addItems(*project->groupNames);
-    ui->comboBox_NewMap_Group->setCurrentText("gMapGroup" + QString::number(groupNum));
+    ui->comboBox_NewMap_Group->setCurrentText(project->groupNames->at(groupNum));
 
     if (existingLayout) {
         ui->spinBox_NewMap_Width->setValue(project->mapLayouts.value(layoutId)->width.toInt(nullptr, 0));
@@ -95,6 +95,8 @@ void NewMapPopup::setDefaultValues(int groupNum, QString mapSec) {
         ui->label_NewMap_Allow_Biking->setVisible(true);
         ui->label_NewMap_Allow_Escape_Rope->setVisible(true);
         break;
+    case BaseGameVersion::pokefirered:
+        break;
     }
 }
 
@@ -131,6 +133,7 @@ void NewMapPopup::on_pushButton_NewMap_Accept_clicked() {
 
     if (this->existingLayout) {
         layout = this->project->mapLayouts.value(this->layoutId);
+        newMap->needsLayoutDir = false;
     } else {
         layout = new MapLayout;
         layout->id = MapLayout::layoutConstantFromName(newMapName);
@@ -154,10 +157,10 @@ void NewMapPopup::on_pushButton_NewMap_Accept_clicked() {
         newMap->phoneService = this->ui->checkBox_NewMap_PhoneService->isChecked() ? "1" : "0";
     }
 
-    group = this->ui->comboBox_NewMap_Group->currentText().remove("gMapGroup").toInt();
+    group = project->groupNames->indexOf(this->ui->comboBox_NewMap_Group->currentText());
     newMap->layout = layout;
     newMap->layoutId = layout->id;
-    project->loadMapLayout(newMap);
+    if (this->existingLayout) project->loadMapLayout(newMap);
     newMap->group_num = QString::number(group);
     map = newMap;
     emit applied();

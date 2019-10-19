@@ -61,6 +61,11 @@ void TilesetEditor::init(Project *project, QString primaryTilesetLabel, QString 
     this->ui->spinBox_paletteSelector->setMinimum(0);
     this->ui->spinBox_paletteSelector->setMaximum(Project::getNumPalettesTotal() - 1);
 
+    //only allow characters valid for a symbol
+    QRegExp expression("[_A-Za-z0-9]*$");
+    QRegExpValidator *validator = new QRegExpValidator(expression);
+    this->ui->lineEdit_metatileLabel->setValidator(validator);
+
     this->initMetatileSelector();
     this->initMetatileLayersItem();
     this->initTileSelector();
@@ -152,7 +157,7 @@ void TilesetEditor::drawSelectedTiles() {
     int tileIndex = 0;
     for (int j = 0; j < dimensions.y(); j++) {
         for (int i = 0; i < dimensions.x(); i++) {
-            QImage tileImage = getColoredTileImage(tiles.at(tileIndex).tile, this->primaryTileset, this->secondaryTileset, tiles.at(tileIndex).palette)
+            QImage tileImage = getPalettedTileImage(tiles.at(tileIndex).tile, this->primaryTileset, this->secondaryTileset, tiles.at(tileIndex).palette)
                     .mirrored(tiles.at(tileIndex).xflip, tiles.at(tileIndex).yflip)
                     .scaled(16, 16);
             tileIndex++;
@@ -179,8 +184,14 @@ void TilesetEditor::initMetatileLayersItem() {
 }
 
 void TilesetEditor::onHoveredMetatileChanged(uint16_t metatileId) {
-    QString message = QString("Metatile: 0x%1")
-                        .arg(QString("%1").arg(metatileId, 3, 16, QChar('0')).toUpper());
+    Metatile *metatile = Tileset::getMetatile(metatileId, this->primaryTileset, this->secondaryTileset);
+    QString message;
+    QString hexString = QString("%1").arg(metatileId, 3, 16, QChar('0')).toUpper();
+    if (metatile && metatile->label.size() != 0) {
+        message = QString("Metatile: 0x%1 \"%2\"").arg(hexString, metatile->label);
+    } else {
+        message = QString("Metatile: 0x%1").arg(hexString);
+    }
     this->ui->statusbar->showMessage(message);
 }
 
@@ -193,6 +204,7 @@ void TilesetEditor::onSelectedMetatileChanged(uint16_t metatileId) {
     this->metatileLayersItem->setMetatile(metatile);
     this->metatileLayersItem->draw();
     this->ui->comboBox_metatileBehaviors->setCurrentIndex(this->ui->comboBox_metatileBehaviors->findData(this->metatile->behavior));
+    this->ui->lineEdit_metatileLabel->setText(this->metatile->label);
     this->ui->comboBox_layerType->setCurrentIndex(this->ui->comboBox_layerType->findData(this->metatile->layerType));
 }
 
@@ -211,6 +223,16 @@ void TilesetEditor::onSelectedTilesChanged() {
 }
 
 void TilesetEditor::onMetatileLayerTileChanged(int x, int y) {
+    const QList<QPoint> tileCoords = QList<QPoint>{
+        QPoint(0, 0),
+        QPoint(1, 0),
+        QPoint(0, 1),
+        QPoint(1, 1),
+        QPoint(2, 0),
+        QPoint(3, 0),
+        QPoint(2, 1),
+        QPoint(3, 1)
+    };
     Metatile *prevMetatile = this->metatile->copy();
     QPoint dimensions = this->tileSelector->getSelectionDimensions();
     QList<Tile> tiles = this->tileSelector->getSelectedTiles();
@@ -218,7 +240,9 @@ void TilesetEditor::onMetatileLayerTileChanged(int x, int y) {
     for (int j = 0; j < dimensions.y(); j++) {
         for (int i = 0; i < dimensions.x(); i++) {
             int tileIndex = ((x + i) / 2 * 4) + ((y + j) * 2) + ((x + i) % 2);
-            if (tileIndex < 8) {
+            if (tileIndex < 8
+             && tileCoords.at(tileIndex).x() >= x
+             && tileCoords.at(tileIndex).y() >= y){
                 Tile *tile = &(*this->metatile->tiles)[tileIndex];
                 tile->tile = tiles.at(selectedTileIndex).tile;
                 tile->xflip = tiles.at(selectedTileIndex).xflip;
@@ -305,6 +329,22 @@ void TilesetEditor::on_comboBox_metatileBehaviors_activated(const QString &metat
     }
 }
 
+void TilesetEditor::on_lineEdit_metatileLabel_editingFinished()
+{
+    saveMetatileLabel();
+}
+
+void TilesetEditor::saveMetatileLabel()
+{
+    // Only commit if the field has changed.
+    if (this->metatile && this->metatile->label != this->ui->lineEdit_metatileLabel->text()) {
+        Metatile *prevMetatile = this->metatile->copy();
+        this->metatile->label = this->ui->lineEdit_metatileLabel->text();
+        MetatileHistoryItem *commit = new MetatileHistoryItem(metatileSelector->getSelectedMetatile(), prevMetatile, this->metatile->copy());
+        metatileHistory.push(commit);
+    }
+}
+
 void TilesetEditor::on_comboBox_layerType_activated(int layerType)
 {
     if (this->metatile) {
@@ -317,6 +357,8 @@ void TilesetEditor::on_comboBox_layerType_activated(int layerType)
 
 void TilesetEditor::on_actionSave_Tileset_triggered()
 {
+    saveMetatileLabel();
+
     this->project->saveTilesets(this->primaryTileset, this->secondaryTileset);
     emit this->tilesetsSaved(this->primaryTileset->name, this->secondaryTileset->name);
     if (this->paletteEditor) {
@@ -668,7 +710,7 @@ void TilesetEditor::importTilesetMetatiles(Tileset *tileset, bool primary)
         msgBox.exec();
         return;
     }
-\
+
     // TODO: This is crude because it makes a history entry for every newly-imported metatile.
     //       Revisit this when tiles and num metatiles are added to tileset editory history.
     int metatileIdBase = primary ? 0 : Project::getNumMetatilesPrimary();

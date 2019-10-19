@@ -5,6 +5,7 @@
 #include "mapconnection.h"
 #include "currentselectedmetatilespixmapitem.h"
 #include "mapsceneeventfilter.h"
+#include "montabwidget.h"
 #include <QCheckBox>
 #include <QPainter>
 #include <QMouseEvent>
@@ -24,6 +25,7 @@ Editor::Editor(Ui::MainWindow* ui)
 
 void Editor::saveProject() {
     if (project) {
+        saveUiFields();
         project->saveAllMaps();
         project->saveAllDataStructures();
     }
@@ -31,9 +33,14 @@ void Editor::saveProject() {
 
 void Editor::save() {
     if (project && map) {
+        saveUiFields();
         project->saveMap(map);
         project->saveAllDataStructures();
     }
+}
+
+void Editor::saveUiFields() {
+    saveEncounterTabData();
 }
 
 void Editor::undo() {
@@ -148,6 +155,468 @@ void Editor::setEditingConnections() {
     setConnectionItemsVisible(true);
     this->cursorMapTileRect->setSingleTileMode();
     this->cursorMapTileRect->setVisibility(false);
+}
+
+void Editor::displayWildMonTables() {
+    QStackedWidget *stack = ui->stackedWidget_WildMons;
+    QComboBox *labelCombo = ui->comboBox_EncounterGroupLabel;
+
+    // delete widgets from previous map data if they exist
+    while (stack->count()) {
+        QWidget *oldWidget = stack->widget(0);
+        stack->removeWidget(oldWidget);
+        delete oldWidget;
+    }
+
+    labelCombo->clear();
+
+    // Don't try to read encounter data if it doesn't exist on disk for this map.
+    if (!project->wildMonData.contains(map->constantName)) {
+        return;
+    }
+
+    labelCombo->addItems(project->wildMonData[map->constantName].keys());
+    labelCombo->setCurrentText(project->wildMonData[map->constantName].firstKey());
+
+    for (int labelIndex = 0; labelIndex < project->wildMonData[map->constantName].keys().size(); labelIndex++) {
+
+        QString label = project->wildMonData.value(map->constantName).keys().at(labelIndex);
+
+        WildPokemonHeader header = project->wildMonData.value(map->constantName).value(label);
+
+        MonTabWidget *tabWidget = new MonTabWidget(this);
+        stack->insertWidget(labelIndex, tabWidget);
+
+        int tabIndex = 0;
+        for (EncounterField monField : project->wildMonFields) {
+            QString fieldName = monField.name;
+
+            tabWidget->clearTableAt(tabIndex);
+
+            if (project->wildMonData.contains(map->constantName) && header.wildMons[fieldName].active) {
+                tabWidget->populateTab(tabIndex, header.wildMons[fieldName], fieldName);
+            } else {
+                tabWidget->setTabActive(tabIndex, false);
+            }
+            tabIndex++;
+        }
+    }
+    stack->setCurrentIndex(0);
+}
+
+void Editor::addNewWildMonGroup(QWidget *window) {
+    QStackedWidget *stack = ui->stackedWidget_WildMons;
+    QComboBox *labelCombo = ui->comboBox_EncounterGroupLabel;
+
+    int stackIndex = stack->currentIndex();
+
+    QDialog dialog(window, Qt::WindowTitleHint | Qt::WindowCloseButtonHint);
+    dialog.setWindowTitle("New Wild Encounter Group Label");
+    dialog.setWindowModality(Qt::NonModal);
+
+    QFormLayout form(&dialog);
+
+    QDialogButtonBox buttonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, Qt::Horizontal, &dialog);
+
+    QLineEdit *lineEdit = new QLineEdit();
+    form.addRow(new QLabel("Group Base Label:"), lineEdit);
+    QRegularExpressionValidator *validator = new QRegularExpressionValidator(QRegularExpression("[_A-Za-z0-9]*"));
+    lineEdit->setValidator(validator);
+    connect(lineEdit, &QLineEdit::textChanged, [this, &lineEdit, &buttonBox](QString text){
+        if (this->project->encounterGroupLabels.contains(text)) {
+            QPalette palette = lineEdit->palette();
+            QColor color = Qt::red;
+            color.setAlpha(25);
+            palette.setColor(QPalette::Base, color);
+            lineEdit->setPalette(palette);
+            buttonBox.button(QDialogButtonBox::Ok)->setDisabled(true);
+        } else {
+            lineEdit->setPalette(QPalette());
+            buttonBox.button(QDialogButtonBox::Ok)->setEnabled(true);
+        }
+    });
+    // Give a default value to the label.
+    lineEdit->setText(QString("g%1%2").arg(map->name).arg(stack->count()));
+
+    // Fields [x] copy from existing
+    QLabel *fieldsLabel = new QLabel("Fields:");
+    form.addRow(fieldsLabel);
+    QCheckBox *copyCheckbox = new QCheckBox;
+    copyCheckbox->setEnabled(stack->count());
+    form.addRow(new QLabel("Copy from current group"), copyCheckbox);
+    QVector<QCheckBox *> fieldCheckboxes;
+    for (EncounterField monField : project->wildMonFields) {
+        QCheckBox *fieldCheckbox = new QCheckBox;
+        fieldCheckboxes.append(fieldCheckbox);
+        form.addRow(new QLabel(monField.name), fieldCheckbox);
+    }
+    // Reading from ui here so not saving to disk before user.
+    connect(copyCheckbox, &QCheckBox::stateChanged, [=](int state){
+        if (state == Qt::Checked) {
+            int fieldIndex = 0;
+            MonTabWidget *monWidget = static_cast<MonTabWidget *>(stack->widget(stack->currentIndex()));
+            for (EncounterField monField : project->wildMonFields) {
+                fieldCheckboxes[fieldIndex]->setChecked(monWidget->isTabEnabled(fieldIndex));
+                fieldCheckboxes[fieldIndex]->setEnabled(false);
+                fieldIndex++;
+            }
+        } else if (state == Qt::Unchecked) {
+            int fieldIndex = 0;
+            for (EncounterField monField : project->wildMonFields) {
+                fieldCheckboxes[fieldIndex]->setEnabled(true);
+                fieldIndex++;
+            }
+        }
+    });
+
+    connect(&buttonBox, &QDialogButtonBox::accepted, [&dialog, &lineEdit, this](){
+        QString newLabel = lineEdit->text();
+        if (!newLabel.isEmpty()) {
+            this->project->encounterGroupLabels.append(newLabel);
+            dialog.accept();
+        }
+    });
+    connect(&buttonBox, SIGNAL(rejected()), &dialog, SLOT(reject()));
+    form.addRow(&buttonBox);
+
+    if (dialog.exec() == QDialog::Accepted) {
+        WildPokemonHeader header;
+        for (EncounterField& monField : project->wildMonFields) {
+            QString fieldName = monField.name;
+            header.wildMons[fieldName].active = false;
+            header.wildMons[fieldName].encounterRate = 0;
+        }
+
+        MonTabWidget *tabWidget = new MonTabWidget(this);
+        stack->insertWidget(stack->count(), tabWidget);
+
+        labelCombo->addItem(lineEdit->text());
+        labelCombo->setCurrentIndex(labelCombo->count() - 1);
+
+        int tabIndex = 0;
+        for (EncounterField &monField : project->wildMonFields) {
+            QString fieldName = monField.name;
+            tabWidget->clearTableAt(tabIndex);
+            if (fieldCheckboxes[tabIndex]->isChecked()) {
+                if (copyCheckbox->isChecked()) {
+                    MonTabWidget *copyFrom = static_cast<MonTabWidget *>(stack->widget(stackIndex));
+                    if (copyFrom->isTabEnabled(tabIndex))
+                        header.wildMons.insert(fieldName, copyMonInfoFromTab(copyFrom->tableAt(tabIndex), monField));
+                    else
+                        header.wildMons.insert(fieldName, getDefaultMonInfo(monField));
+                } else {
+                    header.wildMons.insert(fieldName, getDefaultMonInfo(monField));
+                }
+                tabWidget->populateTab(tabIndex, header.wildMons[fieldName], fieldName);
+            } else {
+                tabWidget->setTabActive(tabIndex, false);
+            }
+            tabIndex++;
+        }
+        saveEncounterTabData();
+    }
+}
+
+void Editor::configureEncounterJSON(QWidget *window) {
+    QVector<QWidget *> fieldSlots;
+
+    EncounterFields tempFields = project->wildMonFields;
+
+    QLabel *totalLabel = new QLabel;
+
+    // lambda: Update the total displayed at the bottom of the Configure JSON
+    //         window. Take groups into account when applicable.
+    auto updateTotal = [&fieldSlots, totalLabel](EncounterField &currentField) {
+        int total = 0, spinnerIndex = 0;
+        QString groupTotalMessage;
+        QMap<QString, int> groupTotals;
+        for (QString key : currentField.groups.keys())
+            groupTotals.insert(key, 0);// add to group map and initialize total to zero
+        for (auto slot : fieldSlots) {
+            QSpinBox *spinner = slot->findChild<QSpinBox *>();
+            int val = spinner->value();
+            currentField.encounterRates[spinnerIndex] = val;
+            if (!currentField.groups.isEmpty()) {
+                for (QString key : currentField.groups.keys()) {
+                    if (currentField.groups[key].contains(spinnerIndex)) {
+                        groupTotals[key] += val;
+                        break;
+                    }
+                }
+            } else {
+                total += val;
+            }
+            spinnerIndex++;
+        }
+        if (!currentField.groups.isEmpty()) {
+            groupTotalMessage += "Totals: ";
+            for (QString key : currentField.groups.keys()) {
+                groupTotalMessage += QString("%1 (%2),\t").arg(groupTotals[key]).arg(key);
+            }
+            groupTotalMessage.chop(2);
+        } else {
+            groupTotalMessage = QString("Total: %1").arg(QString::number(total));
+        }
+        if (total > 0xFF) {
+            totalLabel->setTextFormat(Qt::RichText);
+            groupTotalMessage += QString("<font color=\"red\">\tWARNING: value exceeds the limit for a u8 variable.</font>");
+        }
+        totalLabel->setText(groupTotalMessage);
+    };
+
+    // lambda: Create a new "slot", which is the widget containing a spinner and an index label. 
+    //         Add the slot to a list of fieldSlots, which exists to keep track of them for memory management.
+    auto createNewSlot = [&fieldSlots, &tempFields, &updateTotal](int index, EncounterField &currentField) {
+        QLabel *indexLabel = new QLabel(QString("Index: %1").arg(QString::number(index)));
+        QSpinBox *chanceSpinner = new QSpinBox;
+        int chance = currentField.encounterRates.at(index);
+        chanceSpinner->setMinimum(1);
+        chanceSpinner->setMaximum(9999);
+        chanceSpinner->setValue(chance);
+        connect(chanceSpinner, QOverload<int>::of(&QSpinBox::valueChanged), [&chanceSpinner, &updateTotal, &currentField](int) {
+            updateTotal(currentField);
+        });
+
+        bool useGroups = !currentField.groups.isEmpty();
+
+        QFrame *slotChoiceFrame = new QFrame;
+        QVBoxLayout *slotChoiceLayout = new QVBoxLayout;
+        if (useGroups) {
+            QComboBox *groupCombo = new QComboBox;
+            connect(groupCombo, QOverload<const QString &>::of(&QComboBox::activated), [&tempFields, &currentField, index](QString newGroupName) {
+                for (EncounterField &field : tempFields) {
+                    if (field.name == currentField.name) {
+                        for (QString groupName : field.groups.keys()) {
+                            if (field.groups[groupName].contains(index)) {
+                                field.groups[groupName].removeAll(index);
+                                break;
+                            }
+                        }
+                        for (QString groupName : field.groups.keys()) {
+                            if (groupName == newGroupName) field.groups[newGroupName].append(index);
+                        }
+                        break;
+                    }
+                }
+            });
+            groupCombo->addItems(currentField.groups.keys());
+            QString currentGroupName;
+            for (QString groupName : currentField.groups.keys()) {
+                if (currentField.groups[groupName].contains(index)) {
+                    currentGroupName = groupName;
+                    break;
+                }
+            }
+            groupCombo->setCurrentText(currentGroupName);
+            slotChoiceLayout->addWidget(groupCombo);
+        }
+        slotChoiceLayout->addWidget(chanceSpinner);
+        slotChoiceFrame->setLayout(slotChoiceLayout);
+
+        QFrame *slot = new QFrame;
+        QHBoxLayout *slotLayout = new QHBoxLayout;
+        slotLayout->addWidget(indexLabel);
+        slotLayout->addWidget(slotChoiceFrame);
+        slot->setLayout(slotLayout);
+
+        fieldSlots.append(slot);
+
+        return slot;
+    };
+
+    QDialog dialog(window, Qt::WindowTitleHint | Qt::WindowCloseButtonHint);
+    dialog.setWindowTitle("Configure Wild Encounter Fields");
+    dialog.setWindowModality(Qt::NonModal);
+
+    QGridLayout grid;
+
+    QDialogButtonBox buttonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, Qt::Horizontal, &dialog);
+
+    connect(&buttonBox, SIGNAL(accepted()), &dialog, SLOT(accept()));
+    connect(&buttonBox, SIGNAL(rejected()), &dialog, SLOT(reject()));
+
+    // lambda: Get a QStringList of the existing field names.
+    auto getFieldNames = [&tempFields]() {
+        QStringList fieldNames;
+        for (EncounterField field : tempFields)
+            fieldNames.append(field.name);
+        return fieldNames;
+    };
+
+    // lambda: Draws the slot widgets onto a grid (4 wide) on the dialog window.
+    auto drawSlotWidgets = [this, &dialog, &grid, &createNewSlot, &fieldSlots, &updateTotal, &tempFields](int index) {
+        // Clear them first.
+        while (!fieldSlots.isEmpty()) {
+            auto slot = fieldSlots.takeFirst();
+            grid.removeWidget(slot);
+            delete slot;
+        }
+
+        EncounterField &currentField = tempFields[index];
+        for (int i = 0; i < currentField.encounterRates.size(); i++) {
+            grid.addWidget(createNewSlot(i, currentField), i / 4 + 1, i % 4);
+        }
+
+        updateTotal(currentField);
+
+        dialog.adjustSize();// TODO: why is this updating only on second call? reproduce: land->fishing->rock_smash->water
+    };
+    QComboBox *fieldChoices = new QComboBox;
+    connect(fieldChoices, QOverload<int>::of(&QComboBox::currentIndexChanged), drawSlotWidgets);
+    fieldChoices->addItems(getFieldNames());
+
+    QLabel *fieldChoiceLabel = new QLabel("Field");
+
+    // Button to create new fields in the JSON.
+    QPushButton *addFieldButton = new QPushButton("Add New Field...");
+    connect(addFieldButton, &QPushButton::clicked, [fieldChoices, &tempFields]() {
+        QDialog newNameDialog(nullptr, Qt::WindowTitleHint | Qt::WindowCloseButtonHint);
+        newNameDialog.setWindowModality(Qt::NonModal);
+        QDialogButtonBox newFieldButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, Qt::Horizontal, &newNameDialog);
+        connect(&newFieldButtonBox, SIGNAL(accepted()), &newNameDialog, SLOT(accept()));
+        connect(&newFieldButtonBox, SIGNAL(rejected()), &newNameDialog, SLOT(reject()));
+
+        QLineEdit *newNameEdit = new QLineEdit;
+
+        QFormLayout newFieldForm(&newNameDialog);
+
+        newFieldForm.addRow("Field Name", newNameEdit);
+        newFieldForm.addRow(&newFieldButtonBox);
+
+        if (newNameDialog.exec() == QDialog::Accepted) {
+            QString newFieldName = newNameEdit->text();
+            QVector<int> newFieldRates(1, 100);
+            tempFields.append({newFieldName, newFieldRates, {}});
+            fieldChoices->addItem(newFieldName);
+            fieldChoices->setCurrentIndex(fieldChoices->count() - 1);
+        }
+    });
+    QPushButton *deleteFieldButton = new QPushButton("Delete Field");
+    connect(deleteFieldButton, &QPushButton::clicked, [drawSlotWidgets, fieldChoices, &tempFields]() {
+        if (tempFields.size() < 2) return;// don't delete last
+        int index = fieldChoices->currentIndex();
+        fieldChoices->removeItem(index);
+        tempFields.remove(index);
+        drawSlotWidgets(index);
+    });
+
+    QPushButton *addSlotButton = new QPushButton(QIcon(":/icons/add.ico"), "");
+    addSlotButton->setFlat(true);
+    connect(addSlotButton, &QPushButton::clicked, [this, &fieldChoices, &drawSlotWidgets, &tempFields]() {
+        EncounterField &field = tempFields[fieldChoices->currentIndex()];
+        field.encounterRates.append(1);
+        drawSlotWidgets(fieldChoices->currentIndex());
+    });
+    QPushButton *removeSlotButton = new QPushButton(QIcon(":/icons/delete.ico"), "");
+    removeSlotButton->setFlat(true);
+    connect(removeSlotButton, &QPushButton::clicked, [this, &fieldChoices, &drawSlotWidgets, &tempFields]() {
+        EncounterField &field = tempFields[fieldChoices->currentIndex()];
+        if (field.encounterRates.size() > 1)
+            field.encounterRates.removeLast();
+        drawSlotWidgets(fieldChoices->currentIndex());
+    });
+
+    QFrame firstRow;
+    QHBoxLayout firstRowLayout;
+    firstRowLayout.addWidget(fieldChoiceLabel);
+    firstRowLayout.addWidget(fieldChoices);
+    firstRowLayout.addWidget(deleteFieldButton);
+    firstRowLayout.addWidget(addFieldButton);
+    firstRowLayout.addWidget(removeSlotButton);
+    firstRowLayout.addWidget(addSlotButton);
+    firstRow.setLayout(&firstRowLayout);
+    grid.addWidget(&firstRow, 0, 0, 1, 4, Qt::AlignLeft);
+
+    QHBoxLayout lastRow;
+    lastRow.addWidget(totalLabel);
+    lastRow.addWidget(&buttonBox);
+
+    // To keep the total and button box at the bottom of the window.
+    QVBoxLayout layout(&dialog);
+    QFrame *frameTop = new QFrame;
+    frameTop->setLayout(&grid);
+    layout.addWidget(frameTop);
+    QFrame *frameBottom = new QFrame;
+    frameBottom->setLayout(&lastRow);
+    layout.addWidget(frameBottom);
+
+    if (dialog.exec() == QDialog::Accepted) {
+        updateEncounterFields(tempFields);
+
+        // Re-draw the tab accordingly.
+        displayWildMonTables();
+    }
+}
+
+void Editor::saveEncounterTabData() {
+    // This function does not save to disk so it is safe to use before user clicks Save.
+    QStackedWidget *stack = ui->stackedWidget_WildMons;
+    QComboBox *labelCombo = ui->comboBox_EncounterGroupLabel;
+
+    if (!stack->count()) return;
+
+    QMap<QString, WildPokemonHeader> &encounterMap = project->wildMonData[map->constantName];
+
+    for (int groupIndex = 0; groupIndex < stack->count(); groupIndex++) {
+        MonTabWidget *tabWidget = static_cast<MonTabWidget *>(stack->widget(groupIndex));
+
+        WildPokemonHeader &encounterHeader = encounterMap[labelCombo->itemText(groupIndex)];
+
+        int fieldIndex = 0;
+        for (EncounterField monField : project->wildMonFields) {
+            QString fieldName = monField.name;
+
+            if (!tabWidget->isTabEnabled(fieldIndex++)) continue;
+
+            QTableWidget *monTable = static_cast<QTableWidget *>(tabWidget->widget(fieldIndex - 1));
+            QVector<WildPokemon> newWildMons;
+            encounterHeader.wildMons[fieldName] = copyMonInfoFromTab(monTable, monField);
+        }
+    }
+}
+
+// Update encounters for every map based on the new encounter JSON field data.
+void Editor::updateEncounterFields(EncounterFields newFields) {
+    EncounterFields oldFields = project->wildMonFields;
+    // Go through fields and determine whether we need to update a field.
+    // If the field is new, do nothing.
+    // If the field is deleted, remove from all maps.
+    // If the field is changed, change all maps accordingly.
+    for (EncounterField oldField : oldFields) {
+        QString oldFieldName = oldField.name;
+        bool fieldDeleted = true;
+        for (EncounterField newField : newFields) {
+            QString newFieldName = newField.name;
+            if (oldFieldName == newFieldName) {
+                fieldDeleted = false;
+                if (oldField.encounterRates.size() != newField.encounterRates.size()) {
+                    for (QString map : project->wildMonData.keys()) {
+                        for (QString groupName : project->wildMonData.value(map).keys()) {
+                            WildPokemonHeader &monHeader = project->wildMonData[map][groupName];
+                            for (QString fieldName : monHeader.wildMons.keys()) {
+                                if (fieldName == oldFieldName) {
+                                    monHeader.wildMons[fieldName].wildPokemon.resize(newField.encounterRates.size());
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        if (fieldDeleted) {
+            for (QString map : project->wildMonData.keys()) {
+                for (QString groupName : project->wildMonData.value(map).keys()) {
+                    WildPokemonHeader &monHeader = project->wildMonData[map][groupName];
+                    for (QString fieldName : monHeader.wildMons.keys()) {
+                        if (fieldName == oldFieldName) {
+                            monHeader.wildMons.remove(fieldName);
+                        }
+                    }
+                }
+            }
+        }
+    }
+    project->wildMonFields = newFields;
 }
 
 void Editor::setDiveEmergeControls() {
@@ -349,8 +818,14 @@ void Editor::onHoveredMovementPermissionCleared() {
 }
 
 void Editor::onHoveredMetatileSelectionChanged(uint16_t metatileId) {
-    QString message = QString("Metatile: 0x%1")
-                        .arg(QString("%1").arg(metatileId, 3, 16, QChar('0')).toUpper());
+    Metatile *metatile = Tileset::getMetatile(metatileId, map->layout->tileset_primary, map->layout->tileset_secondary);
+    QString message;
+    QString hexString = QString("%1").arg(metatileId, 3, 16, QChar('0')).toUpper();
+    if (metatile && metatile->label.size() != 0) {
+        message = QString("Metatile: 0x%1 \"%2\"").arg(hexString, metatile->label);
+    } else {
+        message = QString("Metatile: 0x%1").arg(hexString);
+    }
     this->ui->statusBar->showMessage(message);
 }
 
@@ -467,7 +942,7 @@ void Editor::onMapStartPaint(QGraphicsSceneMouseEvent *event, MapPixmapItem *ite
     }
 }
 
-void Editor::onMapEndPaint(QGraphicsSceneMouseEvent *event, MapPixmapItem *item) {
+void Editor::onMapEndPaint(QGraphicsSceneMouseEvent *, MapPixmapItem *item) {
     if (!item->paintingEnabled) {
         return;
     }
@@ -595,6 +1070,7 @@ void Editor::displayMap() {
     displayMapConnections();
     displayMapBorder();
     displayMapGrid();
+    displayWildMonTables();
 
     this->playerViewRect->setZValue(1000);
     this->cursorMapTileRect->setZValue(1001);
@@ -1243,7 +1719,6 @@ void Editor::selectMapEvent(DraggablePixmapItem *object, bool toggle) {
             selected_events->append(object);
         }
         updateSelectedEvents();
-        object->setZValue(object->y() + 1);
     }
 }
 

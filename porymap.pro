@@ -12,7 +12,7 @@ TARGET = porymap
 TEMPLATE = app
 RC_ICONS = resources/icons/porymap-icon-1.ico
 ICON = resources/icons/porymap.icns
-QMAKE_CXXFLAGS += -std=c++11
+QMAKE_CXXFLAGS += -std=c++11 -Wall
 
 SOURCES += src/core/block.cpp \
     src/core/blockdata.cpp \
@@ -29,6 +29,7 @@ SOURCES += src/core/block.cpp \
     src/core/tile.cpp \
     src/core/tileset.cpp \
     src/core/regionmap.cpp \
+    src/core/wildmoninfo.cpp \
     src/ui/aboutporymap.cpp \
     src/ui/bordermetatilespixmapitem.cpp \
     src/ui/collisionpixmapitem.cpp \
@@ -53,6 +54,7 @@ SOURCES += src/core/block.cpp \
     src/ui/neweventtoolbutton.cpp \
     src/ui/noscrollcombobox.cpp \
     src/ui/noscrollspinbox.cpp \
+    src/ui/montabwidget.cpp \
     src/ui/paletteeditor.cpp \
     src/ui/selectablepixmapitem.cpp \
     src/ui/tileseteditor.cpp \
@@ -61,6 +63,7 @@ SOURCES += src/core/block.cpp \
     src/ui/tilemaptileselector.cpp \
     src/ui/regionmapeditor.cpp \
     src/ui/newmappopup.cpp \
+    src/ui/mapimageexporter.cpp \
     src/config.cpp \
     src/editor.cpp \
     src/main.cpp \
@@ -87,6 +90,7 @@ HEADERS  += include/core/block.h \
     include/core/tile.h \
     include/core/tileset.h \
     include/core/regionmap.h \
+    include/core/wildmoninfo.h \
     include/ui/aboutporymap.h \    
     include/ui/bordermetatilespixmapitem.h \
     include/ui/collisionpixmapitem.h \
@@ -111,6 +115,7 @@ HEADERS  += include/core/block.h \
     include/ui/neweventtoolbutton.h \
     include/ui/noscrollcombobox.h \
     include/ui/noscrollspinbox.h \
+    include/ui/montabwidget.h \
     include/ui/paletteeditor.h \
     include/ui/selectablepixmapitem.h \
     include/ui/tileseteditor.h \
@@ -119,6 +124,7 @@ HEADERS  += include/core/block.h \
     include/ui/tilemaptileselector.h \
     include/ui/regionmapeditor.h \
     include/ui/newmappopup.h \
+    include/ui/mapimageexporter.h \
     include/config.h \
     include/editor.h \
     include/mainwindow.h \
@@ -134,10 +140,12 @@ FORMS    += forms/mainwindow.ui \
     forms/regionmapeditor.ui \
     forms/newmappopup.ui \
     forms/aboutporymap.ui \
-    forms/newtilesetdialog.ui
+    forms/newtilesetdialog.ui \
+    forms/mapimageexporter.ui
 
 RESOURCES += \
-    resources/images.qrc
+    resources/images.qrc \
+    resources/themes.qrc
 
 INCLUDEPATH += include
 INCLUDEPATH += include/core

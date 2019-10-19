@@ -38,6 +38,7 @@ public:
         this->showPlayerView = false;
         this->showCursorTile = true;
         this->regionMapDimensions = QSize(32, 20);
+        this->theme = "default";
     }
     void setRecentProject(QString project);
     void setRecentMap(QString map);
@@ -49,6 +50,7 @@ public:
     void setShowPlayerView(bool enabled);
     void setShowCursorTile(bool enabled);
     void setRegionMapDimensions(int width, int height);
+    void setTheme(QString theme);
     QString getRecentProject();
     QString getRecentMap();
     MapSortOrder getMapSortOrder();
@@ -59,6 +61,7 @@ public:
     bool getShowPlayerView();
     bool getShowCursorTile();
     QSize getRegionMapDimensions();
+    QString getTheme();
 protected:
     QString getConfigFilepath();
     void parseConfigKeyValue(QString key, QString value);
@@ -81,6 +84,7 @@ private:
     bool showPlayerView;
     bool showCursorTile;
     QSize regionMapDimensions;
+    QString theme;
 };
 
 extern PorymapConfig porymapConfig;
@@ -96,9 +100,12 @@ class ProjectConfig: public KeyValueConfigBase
 public:
     ProjectConfig() {
         this->baseGameVersion = BaseGameVersion::pokeemerald;
+        this->useEncounterJson = true;
     }
     void setBaseGameVersion(BaseGameVersion baseGameVersion);
     BaseGameVersion getBaseGameVersion();
+    void setEncounterJsonActive(bool active);
+    bool getEncounterJsonActive();
     void setProjectDir(QString projectDir);
 protected:
     QString getConfigFilepath();
@@ -108,6 +115,7 @@ protected:
 private:
     BaseGameVersion baseGameVersion;
     QString projectDir;
+    bool useEncounterJson;
 };
 
 extern ProjectConfig projectConfig;

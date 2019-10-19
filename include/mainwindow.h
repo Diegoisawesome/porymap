@@ -16,6 +16,7 @@
 #include "editor.h"
 #include "tileseteditor.h"
 #include "regionmapeditor.h"
+#include "mapimageexporter.h"
 #include "filterchildrenproxymodel.h"
 #include "newmappopup.h"
 #include "newtilesetdialog.h"
@@ -58,11 +59,11 @@ private slots:
     void on_action_Save_triggered();
     void on_tabWidget_2_currentChanged(int index);
     void on_action_Exit_triggered();
-    void on_comboBox_Song_activated(const QString &arg1);
-    void on_comboBox_Location_activated(const QString &arg1);
-    void on_comboBox_Weather_activated(const QString &arg1);
-    void on_comboBox_Type_activated(const QString &arg1);
-    void on_comboBox_BattleScene_activated(const QString &arg1);
+    void on_comboBox_Song_currentTextChanged(const QString &arg1);
+    void on_comboBox_Location_currentTextChanged(const QString &arg1);
+    void on_comboBox_Weather_currentTextChanged(const QString &arg1);
+    void on_comboBox_Type_currentTextChanged(const QString &arg1);
+    void on_comboBox_BattleScene_currentTextChanged(const QString &arg1);
     void on_checkBox_ShowLocation_clicked(bool checked);
     void on_checkBox_AllowRunning_clicked(bool checked);
     void on_checkBox_AllowBiking_clicked(bool checked);
@@ -72,7 +73,6 @@ private slots:
     void on_tabWidget_currentChanged(int index);
 
     void on_actionUndo_triggered();
-
     void on_actionRedo_triggered();
 
     void on_actionZoom_In_triggered();
@@ -95,15 +95,10 @@ private slots:
     void updateObjects();
 
     void on_toolButton_Paint_clicked();
-
     void on_toolButton_Select_clicked();
-
     void on_toolButton_Fill_clicked();
-
     void on_toolButton_Dropper_clicked();
-
     void on_toolButton_Move_clicked();
-
     void on_toolButton_Shift_clicked();
 
     void onOpenMapListContextMenu(const QPoint &point);
@@ -116,29 +111,17 @@ private slots:
     void on_action_Export_Map_Image_triggered();
 
     void on_comboBox_ConnectionDirection_currentIndexChanged(const QString &arg1);
-
     void on_spinBox_ConnectionOffset_valueChanged(int offset);
-
     void on_comboBox_ConnectedMap_currentTextChanged(const QString &mapName);
-
     void on_pushButton_AddConnection_clicked();
-
     void on_pushButton_RemoveConnection_clicked();
-
     void on_comboBox_DiveMap_currentTextChanged(const QString &mapName);
-
     void on_comboBox_EmergeMap_currentTextChanged(const QString &mapName);
-
-    void on_comboBox_PrimaryTileset_activated(const QString &arg1);
-
-    void on_comboBox_SecondaryTileset_activated(const QString &arg1);
-
+    void on_comboBox_PrimaryTileset_currentTextChanged(const QString &arg1);
+    void on_comboBox_SecondaryTileset_currentTextChanged(const QString &arg1);
     void on_pushButton_clicked();
-
     void on_checkBox_smartPaths_stateChanged(int selected);
-
     void on_checkBox_Visibility_clicked(bool checked);
-
     void on_checkBox_ToggleBorder_stateChanged(int arg1);
 
     void resetMapViewScale();
@@ -159,10 +142,13 @@ private slots:
     void on_toolButton_ExpandAll_clicked();
     void on_toolButton_CollapseAll_clicked();
     void on_actionAbout_Porymap_triggered();
+    void on_actionThemes_triggered();
     void on_pushButton_AddCustomHeaderField_clicked();
     void on_pushButton_DeleteCustomHeaderField_clicked();
     void on_tableWidget_CustomHeaderFields_cellChanged(int row, int column);
     void on_horizontalSlider_MetatileZoom_valueChanged(int value);
+    void on_pushButton_NewWildMonGroup_clicked();
+    void on_pushButton_ConfigureEncountersJSON_clicked();
 
     void on_actionRegion_Map_Editor_triggered();
 
@@ -170,6 +156,7 @@ private:
     Ui::MainWindow *ui;
     TilesetEditor *tilesetEditor = nullptr;
     RegionMapEditor *regionMapEditor = nullptr;
+    MapImageExporter *mapImageExporter = nullptr;
     FilterChildrenProxyModel *mapListProxyModel;
     NewMapPopup *newmapprompt = nullptr;
     QStandardItemModel *mapListModel;
@@ -194,6 +181,7 @@ private:
     DraggablePixmapItem *selectedHealspot;
 
     bool isProgrammaticEventTabChange;
+    bool projectHasUnsavedChanges;
 
     MapSortOrder mapSortOrder;
 
@@ -224,6 +212,7 @@ private:
     void setProjectSpecificUIVisibility();
     void loadUserSettings();
     void restoreWindowState();
+    void setTheme(QString);
     bool openRecentProject();
     void updateTilesetEditor();
     QString getEventGroupFromTabWidget(QWidget *tab);

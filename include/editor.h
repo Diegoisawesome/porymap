@@ -43,6 +43,8 @@ public:
     void redo();
     void closeProject();
     bool setMap(QString map_name);
+    void saveUiFields();
+    void saveEncounterTabData();
     void displayMap();
     void displayMetatileSelector();
     void displayMapMetatiles();
@@ -56,11 +58,13 @@ public:
     void displayMapConnections();
     void displayMapBorder();
     void displayMapGrid();
+    void displayWildMonTables();
 
     void setEditingMap();
     void setEditingCollision();
     void setEditingObjects();
     void setEditingConnections();
+    void clearWildMonTabWidgets();
     void setCurrentConnectionDirection(QString curDirection);
     void updateCurrentConnectionDirection(QString curDirection);
     void setConnectionsVisibility(bool visible);
@@ -68,6 +72,7 @@ public:
     void setConnectionMap(QString mapName);
     void addNewConnection();
     void removeCurrentConnection();
+    void addNewWildMonGroup(QWidget *window);
     void updateDiveMap(QString mapName);
     void updateEmergeMap(QString mapName);
     void setSelectedConnectionFromMap(QString mapName);
@@ -75,6 +80,7 @@ public:
     void updateSecondaryTileset(QString tilesetLabel, bool forceLoad = false);
     void toggleBorderVisibility(bool visible);
     void updateCustomMapHeaderValues(QTableWidget *);
+    void configureEncounterJSON(QWidget *);
     Tileset *getCurrentMapPrimaryTileset();
 
     DraggablePixmapItem *addMapEvent(Event *event);
@@ -140,6 +146,7 @@ private:
     void updateMirroredConnectionDirection(MapConnection*, QString);
     void updateMirroredConnectionMap(MapConnection*, QString);
     void updateMirroredConnection(MapConnection*, QString, QString, bool isDelete = false);
+    void updateEncounterFields(EncounterFields newFields);
     Event* createNewObjectEvent();
     Event* createNewWarpEvent();
     Event* createNewHealLocationEvent();
@@ -204,7 +211,11 @@ public:
         int y = event->getPixelY();
         setX(x);
         setY(y);
-        setZValue(event->y());
+        if (editor->selected_events && editor->selected_events->contains(this)) {
+            setZValue(event->y() + 1);
+        } else {
+            setZValue(event->y());
+        }
     }
     void move(int x, int y);
     void emitPositionChanged() {

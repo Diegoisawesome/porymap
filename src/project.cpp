@@ -18,6 +18,7 @@
 #include <QStandardItem>
 #include <QMessageBox>
 #include <QRegularExpression>
+#include <algorithm>
 
 int Project::num_tiles_primary = 512;
 int Project::num_tiles_total = 1024;
@@ -46,6 +47,11 @@ Project::Project()
     mapConstantsToMapNames = new QMap<QString, QString>;
     mapNamesToMapConstants = new QMap<QString, QString>;
     tileset_cache = new QMap<QString, Tileset*>;
+}
+
+void Project::set_root(QString dir) {
+    this->root = dir;
+    this->parser.set_root(dir);
 }
 
 QString Project::getProjectTitle() {
@@ -81,51 +87,6 @@ Map* Project::loadMap(QString map_name) {
 
 void Project::setNewMapConnections(Map *map) {
     map->connections.clear();
-}
-
-QList<QStringList>* Project::getLabelMacros(QList<QStringList> *list, QString label) {
-    bool in_label = false;
-    QList<QStringList> *new_list = new QList<QStringList>;
-    for (int i = 0; i < list->length(); i++) {
-        QStringList params = list->value(i);
-        QString macro = params.value(0);
-        if (macro == ".label") {
-            if (params.value(1) == label) {
-                in_label = true;
-            } else if (in_label) {
-                // If nothing has been read yet, assume the label
-                // we're looking for is in a stack of labels.
-                if (new_list->length() > 0) {
-                    break;
-                }
-            }
-        } else if (in_label) {
-            new_list->append(params);
-        }
-    }
-    return new_list;
-}
-
-// For if you don't care about filtering by macro,
-// and just want all values associated with some label.
-QStringList* Project::getLabelValues(QList<QStringList> *list, QString label) {
-    list = getLabelMacros(list, label);
-    QStringList *values = new QStringList;
-    for (int i = 0; i < list->length(); i++) {
-        QStringList params = list->value(i);
-        QString macro = params.value(0);
-        // Ignore .align
-        if (macro == ".align")
-            continue;
-        if (macro == ".ifdef")
-            continue;
-        if (macro == ".ifndef")
-            continue;
-        for (int j = 1; j < params.length(); j++) {
-            values->append(params.value(j));
-        }
-    }
-    return values;
 }
 
 QMap<QString, bool> Project::getTopLevelMapFields() {
@@ -188,7 +149,7 @@ bool Project::loadMapData(Map* map) {
 
     QString mapFilepath = QString("%1/data/maps/%2/map.json").arg(root).arg(map->name);
     QJsonDocument mapDoc;
-    if (!tryParseJsonFile(&mapDoc, mapFilepath)) {
+    if (!parser.tryParseJsonFile(&mapDoc, mapFilepath)) {
         logError(QString("Failed to read map data from %1").arg(mapFilepath));
         return false;
     }
@@ -420,9 +381,9 @@ QString Project::readMapLayoutId(QString map_name) {
 
     QString mapFilepath = QString("%1/data/maps/%2/map.json").arg(root).arg(map_name);
     QJsonDocument mapDoc;
-    if (!tryParseJsonFile(&mapDoc, mapFilepath)) {
+    if (!parser.tryParseJsonFile(&mapDoc, mapFilepath)) {
         logError(QString("Failed to read map layout id from %1").arg(mapFilepath));
-        return QString::null;
+        return QString();
     }
 
     QJsonObject mapObj = mapDoc.object();
@@ -436,9 +397,9 @@ QString Project::readMapLocation(QString map_name) {
 
     QString mapFilepath = QString("%1/data/maps/%2/map.json").arg(root).arg(map_name);
     QJsonDocument mapDoc;
-    if (!tryParseJsonFile(&mapDoc, mapFilepath)) {
+    if (!parser.tryParseJsonFile(&mapDoc, mapFilepath)) {
         logError(QString("Failed to read map's region map section from %1").arg(mapFilepath));
-        return QString::null;
+        return QString();
     }
 
     QJsonObject mapObj = mapDoc.object();
@@ -488,7 +449,7 @@ void Project::readMapLayouts() {
 
     QString layoutsFilepath = QString("%1/data/layouts/layouts.json").arg(root);
     QJsonDocument layoutsDoc;
-    if (!tryParseJsonFile(&layoutsDoc, layoutsFilepath)) {
+    if (!parser.tryParseJsonFile(&layoutsDoc, layoutsFilepath)) {
         logError(QString("Failed to read map layouts from %1").arg(layoutsFilepath));
         return;
     }
@@ -599,6 +560,91 @@ void Project::saveMapGroups() {
     mapGroupsFile.write(mapGroupsDoc.toJson());
 }
 
+void Project::saveWildMonData() {
+    if (!projectConfig.getEncounterJsonActive()) return;
+
+    QString wildEncountersJsonFilepath = QString("%1/src/data/wild_encounters.json").arg(root);
+    QFile wildEncountersFile(wildEncountersJsonFilepath);
+    if (!wildEncountersFile.open(QIODevice::WriteOnly)) {
+        logError(QString("Error: Could not open %1 for writing").arg(wildEncountersJsonFilepath));
+        return;
+    }
+
+    QJsonObject wildEncountersObject;
+    QJsonArray wildEncounterGroups = QJsonArray();
+
+    // gWildMonHeaders label is not mutable
+    QJsonObject monHeadersObject;
+    monHeadersObject["label"] = "gWildMonHeaders";
+    monHeadersObject["for_maps"] = true;
+
+    QJsonArray fieldsInfoArray;
+    for (EncounterField fieldInfo : wildMonFields) {
+        QJsonObject fieldObject;
+        QJsonArray rateArray;
+
+        for (int rate : fieldInfo.encounterRates) {
+            rateArray.append(rate);
+        }
+
+        fieldObject["type"] = fieldInfo.name;
+        fieldObject["encounter_rates"] = rateArray;
+
+        QJsonObject groupsObject;
+        for (QString groupName : fieldInfo.groups.keys()) {
+            QJsonArray subGroupIndices;
+            std::sort(fieldInfo.groups[groupName].begin(), fieldInfo.groups[groupName].end());
+            for (int slotIndex : fieldInfo.groups[groupName]) {
+                subGroupIndices.append(slotIndex);
+            }
+            groupsObject[groupName] = subGroupIndices;
+        }
+        if (!groupsObject.isEmpty()) fieldObject["groups"] = groupsObject;
+
+        fieldsInfoArray.append(fieldObject);
+    }
+    monHeadersObject["fields"] = fieldsInfoArray;
+
+    QJsonArray encountersArray = QJsonArray();
+    for (QString key : wildMonData.keys()) {
+        for (QString groupLabel : wildMonData.value(key).keys()) {
+            QJsonObject encounterObject;
+            encounterObject["map"] = key;
+            encounterObject["base_label"] = groupLabel;
+
+            WildPokemonHeader encounterHeader = wildMonData.value(key).value(groupLabel);
+            for (QString fieldName : encounterHeader.wildMons.keys()) {
+                QJsonObject fieldObject;
+                WildMonInfo monInfo = encounterHeader.wildMons.value(fieldName);
+                fieldObject["encounter_rate"] = monInfo.encounterRate;
+                QJsonArray monArray;
+                for (WildPokemon wildMon : monInfo.wildPokemon) {
+                    QJsonObject monEntry;
+                    monEntry["min_level"] = wildMon.minLevel;
+                    monEntry["max_level"] = wildMon.maxLevel;
+                    monEntry["species"] = wildMon.species;
+                    monArray.append(monEntry);
+                }
+                fieldObject["mons"] = monArray;
+                encounterObject[fieldName] = fieldObject;
+            }
+            encountersArray.append(encounterObject);
+        }
+    }
+    monHeadersObject["encounters"] = encountersArray;
+    wildEncounterGroups.append(monHeadersObject);
+
+    // add extra Json objects that are not associated with maps to the file
+    for (QString label : extraEncounterGroups.keys()) {
+        wildEncounterGroups.append(extraEncounterGroups[label]);
+    }
+
+    wildEncountersObject["wild_encounter_groups"] = wildEncounterGroups;
+    QJsonDocument wildEncountersDoc(wildEncountersObject);
+    wildEncountersFile.write(wildEncountersDoc.toJson());
+    wildEncountersFile.close();
+}
+
 void Project::saveMapConstantsHeader() {
     QString text = QString("#ifndef GUARD_CONSTANTS_MAP_GROUPS_H\n");
     text += QString("#define GUARD_CONSTANTS_MAP_GROUPS_H\n");
@@ -700,6 +746,7 @@ void Project::saveHealLocationStruct(Map *map) {
 }
 
 void Project::saveTilesets(Tileset *primaryTileset, Tileset *secondaryTileset) {
+    saveTilesetMetatileLabels(primaryTileset, secondaryTileset);
     saveTilesetMetatileAttributes(primaryTileset);
     saveTilesetMetatileAttributes(secondaryTileset);
     saveTilesetMetatiles(primaryTileset);
@@ -708,6 +755,86 @@ void Project::saveTilesets(Tileset *primaryTileset, Tileset *secondaryTileset) {
     saveTilesetTilesImage(secondaryTileset);
     saveTilesetPalettes(primaryTileset, true);
     saveTilesetPalettes(secondaryTileset, false);
+}
+
+void Project::saveTilesetMetatileLabels(Tileset *primaryTileset, Tileset *secondaryTileset) {
+    QString primaryPrefix = QString("METATILE_%1_").arg(QString(primaryTileset->name).replace("gTileset_", ""));
+    QString secondaryPrefix = QString("METATILE_%1_").arg(QString(secondaryTileset->name).replace("gTileset_", ""));
+
+    QMap<QString, int> defines;
+    bool definesFileModified = false;
+
+    defines = parser.readCDefines("include/constants/metatile_labels.h", (QStringList() << "METATILE_"));
+
+    // Purge old entries from the file.
+    QStringList definesToRemove;
+    for (QString defineName : defines.keys()) {
+        if (defineName.startsWith(primaryPrefix) || defineName.startsWith(secondaryPrefix)) {
+            definesToRemove << defineName;
+        }
+    }
+    for (QString defineName : definesToRemove) {
+        defines.remove(defineName);
+        definesFileModified = true;
+    }
+
+    // Add the new labels.
+    for (int i = 0; i < primaryTileset->metatiles->size(); i++) {
+        Metatile *metatile = primaryTileset->metatiles->at(i);
+        if (metatile->label.size() != 0) {
+            QString defineName = QString("%1%2").arg(primaryPrefix, metatile->label);
+            defines.insert(defineName, i);
+            definesFileModified = true;
+        }
+    }
+    for (int i = 0; i < secondaryTileset->metatiles->size(); i++) {
+        Metatile *metatile = secondaryTileset->metatiles->at(i);
+        if (metatile->label.size() != 0) {
+            QString defineName = QString("%1%2").arg(secondaryPrefix, metatile->label);
+            defines.insert(defineName, i + Project::num_tiles_primary);
+            definesFileModified = true;
+        }
+    }
+
+    if (!definesFileModified) {
+        return;
+    }
+
+    auto getTilesetFromLabel = [](QString labelName) {
+        return QRegularExpression("METATILE_(?<tileset>[A-Za-z0-9]+)_").match(labelName).captured("tileset");
+    };
+
+    QString outputText = "#ifndef GUARD_METATILE_LABELS_H\n";
+    outputText += "#define GUARD_METATILE_LABELS_H\n";
+
+    for (int i = 0; i < defines.size();) {
+        QString defineName = defines.keys()[i];
+        QString currentTileset = getTilesetFromLabel(defineName);
+        outputText += QString("\n// gTileset_%1\n").arg(currentTileset);
+
+        int j = 0, longestLength = 0;
+        QMap<QString, int> definesOut;
+
+        // Setup for pretty formatting.
+        while (i + j < defines.size() && getTilesetFromLabel(defines.keys()[i + j]) == currentTileset) {
+            defineName = defines.keys()[i + j];
+            if (defineName.size() > longestLength)
+                longestLength = defineName.size();
+            definesOut.insert(defineName, defines[defineName]);
+            j++;
+        }
+        for (QString defineName : definesOut.keys()) {
+            int value = defines[defineName];
+            QString line = QString("#define %1  0x%2\n")
+                .arg(defineName, -1 * longestLength)
+                .arg(QString("%1").arg(value, 3, 16, QChar('0')).toUpper());
+            outputText += line;
+        }
+        i += j;
+    }
+
+    outputText += "\n#endif // GUARD_METATILE_LABELS_H\n";
+    saveTextFile(root + "/include/constants/metatile_labels.h", outputText);
 }
 
 void Project::saveTilesetMetatileAttributes(Tileset *tileset) {
@@ -750,11 +877,11 @@ void Project::saveTilesetTilesImage(Tileset *tileset) {
     tileset->tilesImage.save(tileset->tilesImagePath);
 }
 
-void Project::saveTilesetPalettes(Tileset *tileset, bool primary) {
-    PaletteUtil parser;
+void Project::saveTilesetPalettes(Tileset *tileset, bool /*primary*/) {
+    PaletteUtil paletteParser;
     for (int i = 0; i < Project::getNumPalettesTotal(); i++) {
         QString filepath = tileset->palettePaths.at(i);
-        parser.writeJASC(filepath, tileset->palettes->at(i).toVector(), 0, 16);
+        paletteParser.writeJASC(filepath, tileset->palettes->at(i).toVector(), 0, 16);
     }
 }
 
@@ -768,13 +895,10 @@ void Project::loadMapTilesets(Map* map) {
 }
 
 Tileset* Project::loadTileset(QString label, Tileset *tileset) {
-    ParseUtil *parser = new ParseUtil;
-
-    QString headers_text = readTextFile(root + "/data/tilesets/headers.inc");
-    if (headers_text.isNull()) {
+    QStringList *values = parser.getLabelValues(parser.parseAsm("data/tilesets/headers.inc"), label);
+    if (values->isEmpty()) {
         return nullptr;
     }
-    QStringList *values = getLabelValues(parser->parseAsm(headers_text), label);
     if (tileset == nullptr) {
         tileset = new Tileset;
     }
@@ -902,7 +1026,7 @@ void Project::saveMap(Map *map) {
 
     QString layoutsFilepath = QString("%1/data/layouts/layouts.json").arg(root);
     QJsonDocument layoutsDoc;
-    if (!tryParseJsonFile(&layoutsDoc, layoutsFilepath)) {
+    if (!parser.tryParseJsonFile(&layoutsDoc, layoutsFilepath)) {
         logError(QString("Failed to read map layouts from %1").arg(layoutsFilepath));
         return;
     }
@@ -1077,10 +1201,10 @@ void Project::saveAllDataStructures() {
     saveMapLayouts();
     saveMapGroups();
     saveMapConstantsHeader();
+    saveWildMonData();
 }
 
 void Project::loadTilesetAssets(Tileset* tileset) {
-    ParseUtil* parser = new ParseUtil;
     QString category = (tileset->is_secondary == "TRUE") ? "secondary" : "primary";
     if (tileset->name.isNull()) {
         return;
@@ -1088,10 +1212,9 @@ void Project::loadTilesetAssets(Tileset* tileset) {
     QString tilesetName = tileset->name;
     QString dir_path = root + "/data/tilesets/" + category + "/" + tilesetName.replace("gTileset_", "").toLower();
 
-    QString graphics_text = readTextFile(root + "/data/tilesets/graphics.inc");
-    QList<QStringList> *graphics = parser->parseAsm(graphics_text);
-    QStringList *tiles_values = getLabelValues(graphics, tileset->tiles_label);
-    QStringList *palettes_values = getLabelValues(graphics, tileset->palettes_label);
+    QList<QStringList> *graphics = parser.parseAsm("data/tilesets/graphics.inc");
+    QStringList *tiles_values = parser.getLabelValues(graphics, tileset->tiles_label);
+    QStringList *palettes_values = parser.getLabelValues(graphics, tileset->palettes_label);
 
     QString tiles_path;
     if (!tiles_values->isEmpty()) {
@@ -1115,15 +1238,14 @@ void Project::loadTilesetAssets(Tileset* tileset) {
         }
     }
 
-    QString metatiles_text = readTextFile(root + "/data/tilesets/metatiles.inc");
-    QList<QStringList> *metatiles_macros = parser->parseAsm(metatiles_text);
-    QStringList *metatiles_values = getLabelValues(metatiles_macros, tileset->metatiles_label);
+    QList<QStringList> *metatiles_macros = parser.parseAsm("data/tilesets/metatiles.inc");
+    QStringList *metatiles_values = parser.getLabelValues(metatiles_macros, tileset->metatiles_label);
     if (!metatiles_values->isEmpty()) {
         tileset->metatiles_path = root + "/" + metatiles_values->value(0).section('"', 1, 1);
     } else {
         tileset->metatiles_path = dir_path + "/metatiles.bin";
     }
-    QStringList *metatile_attrs_values = getLabelValues(metatiles_macros, tileset->metatile_attrs_label);
+    QStringList *metatile_attrs_values = parser.getLabelValues(metatiles_macros, tileset->metatile_attrs_label);
     if (!metatile_attrs_values->isEmpty()) {
         tileset->metatile_attrs_path = root + "/" + metatile_attrs_values->value(0).section('"', 1, 1);
     } else {
@@ -1135,13 +1257,14 @@ void Project::loadTilesetAssets(Tileset* tileset) {
     QImage image = QImage(tileset->tilesImagePath);
     this->loadTilesetTiles(tileset, image);
     this->loadTilesetMetatiles(tileset);
+    this->loadTilesetMetatileLabels(tileset);
 
     // palettes
     QList<QList<QRgb>> *palettes = new QList<QList<QRgb>>;
     for (int i = 0; i < tileset->palettePaths.length(); i++) {
         QList<QRgb> palette;
         QString path = tileset->palettePaths.value(i);
-        QString text = readTextFile(path);
+        QString text = parser.readTextFile(path);
         if (!text.isNull()) {
             QStringList lines = text.split(QRegExp("[\r\n]"),QString::SkipEmptyParts);
             if (lines.length() == 19 && lines[0] == "JASC-PAL" && lines[1] == "0100" && lines[2] == "16") {
@@ -1237,6 +1360,23 @@ void Project::loadTilesetMetatiles(Tileset* tileset) {
     }
 }
 
+void Project::loadTilesetMetatileLabels(Tileset* tileset) {
+    QString tilesetPrefix = QString("METATILE_%1_").arg(QString(tileset->name).replace("gTileset_", ""));
+    QMap<QString, int> labels = parser.readCDefines("include/constants/metatile_labels.h", QStringList() << tilesetPrefix);
+
+    for (QString labelName : labels.keys()) {
+        int metatileId = labels[labelName];
+        // subtract Project::num_tiles_primary from secondary metatiles
+        Metatile *metatile = Tileset::getMetatile(metatileId - (tileset->is_secondary == "TRUE" ? Project::num_tiles_primary : 0), tileset, nullptr);
+        if (metatile) {
+            metatile->label = labelName.replace(tilesetPrefix, "");
+        } else {
+            QString hexString = QString("%1").arg(metatileId, 3, 16, QChar('0')).toUpper();
+            logError(QString("Metatile 0x%1 cannot be found in tileset '%2'").arg(hexString, tileset->name));
+        }
+    }
+}
+
 Blockdata* Project::readBlockdata(QString path) {
     Blockdata *blockdata = new Blockdata;
     QFile file(path);
@@ -1276,21 +1416,6 @@ Tileset* Project::getTileset(QString label, bool forceLoad) {
     }
 }
 
-QString Project::readTextFile(QString path) {
-    QFile file(path);
-    if (!file.open(QIODevice::ReadOnly)) {
-        logError(QString("Could not open '%1': ").arg(path) + file.errorString());
-        return QString();
-    }
-    QTextStream in(&file);
-    in.setCodec("UTF-8");
-    QString text = "";
-    while (!in.atEnd()) {
-        text += in.readLine() + "\n";
-    }
-    return text;
-}
-
 void Project::saveTextFile(QString path, QString text) {
     QFile file(path);
     if (file.open(QIODevice::WriteOnly)) {
@@ -1316,10 +1441,69 @@ void Project::deleteFile(QString path) {
     }
 }
 
+void Project::readWildMonData() {
+    if (!projectConfig.getEncounterJsonActive()) return;
+
+    QString wildMonJsonFilepath = QString("%1/src/data/wild_encounters.json").arg(root);
+    QJsonDocument wildMonsJsonDoc;
+    if (!parser.tryParseJsonFile(&wildMonsJsonDoc, wildMonJsonFilepath)) {
+        logError(QString("Failed to read wild encounters from %1").arg(wildMonJsonFilepath));
+        return;
+    }
+
+    QJsonObject wildMonObj = wildMonsJsonDoc.object();
+
+    for (auto subObjectRef : wildMonObj["wild_encounter_groups"].toArray()) {
+        QJsonObject subObject = subObjectRef.toObject();
+        if (!subObject["for_maps"].toBool()) {
+            extraEncounterGroups.insert(subObject["label"].toString(), subObject);
+            continue;
+        }
+
+        for (auto field : subObject["fields"].toArray()) {
+            EncounterField encounterField;
+            encounterField.name = field.toObject()["type"].toString();
+            for (auto val : field.toObject()["encounter_rates"].toArray()) {
+                encounterField.encounterRates.append(val.toInt());
+            }
+            for (QString group : field.toObject()["groups"].toObject().keys()) {
+                for (auto slotNum : field.toObject()["groups"].toObject()[group].toArray()) {
+                    encounterField.groups[group].append(slotNum.toInt());
+                }
+            }
+            wildMonFields.append(encounterField);
+        }
+
+        QJsonArray encounters = subObject["encounters"].toArray();
+        for (QJsonValue encounter : encounters) {
+            QString mapConstant = encounter.toObject().value("map").toString();
+
+            WildPokemonHeader header;
+
+            for (EncounterField monField : wildMonFields) {
+                QString field = monField.name;
+                if (encounter.toObject().value(field) != QJsonValue::Undefined) {
+                    header.wildMons[field].active = true;
+                    header.wildMons[field].encounterRate = encounter.toObject().value(field).toObject().value("encounter_rate").toInt();
+                    for (QJsonValue mon : encounter.toObject().value(field).toObject().value("mons").toArray()) {
+                        WildPokemon newMon;
+                        newMon.minLevel = mon.toObject().value("min_level").toInt();
+                        newMon.maxLevel = mon.toObject().value("max_level").toInt();
+                        newMon.species = mon.toObject().value("species").toString();
+                        header.wildMons[field].wildPokemon.append(newMon);
+                    }
+                }
+            }
+            wildMonData[mapConstant].insert(encounter.toObject().value("base_label").toString(), header);
+            encounterGroupLabels.append(encounter.toObject().value("base_label").toString());
+        }
+    }
+}
+
 void Project::readMapGroups() {
     QString mapGroupsFilepath = QString("%1/data/maps/map_groups.json").arg(root);
     QJsonDocument mapGroupsDoc;
-    if (!tryParseJsonFile(&mapGroupsDoc, mapGroupsFilepath)) {
+    if (!parser.tryParseJsonFile(&mapGroupsDoc, mapGroupsFilepath)) {
         logError(QString("Failed to read map groups from %1").arg(mapGroupsFilepath));
         return;
     }
@@ -1423,11 +1607,6 @@ QString Project::getNewMapName() {
     return newMapName;
 }
 
-QList<QStringList>* Project::parseAsm(QString text) {
-    ParseUtil *parser = new ParseUtil;
-    return parser->parseAsm(text);
-}
-
 QStringList Project::getVisibilities() {
     // TODO
     QStringList names;
@@ -1455,124 +1634,110 @@ QMap<QString, QStringList> Project::getTilesetLabels() {
     QStringList secondaryTilesets;
     allTilesets.insert("primary", primaryTilesets);
     allTilesets.insert("secondary", secondaryTilesets);
-    QString headers_text = readTextFile(root + "/data/tilesets/headers.inc");
-    QList<QStringList>* commands = parseAsm(headers_text);
-    int i = 0;
-    while (i < commands->length()) {
-        if (commands->at(i).length() != 2)
+
+    QString headers_text = parser.readTextFile(root + "/data/tilesets/headers.inc");
+
+    QRegularExpression re("(?<label>[A-Za-z0-9_]*):{1,2}[A-Za-z0-9_@ ]*\\s+.+\\s+\\.byte\\s+(?<isSecondary>[A-Za-z0-9_]+)");
+    QRegularExpressionMatchIterator iter = re.globalMatch(headers_text);
+
+    while (iter.hasNext()) {
+        QRegularExpressionMatch match = iter.next();
+        QString tilesetLabel = match.captured("label");
+        QString secondaryTilesetValue = match.captured("isSecondary");
+
+        if (secondaryTilesetValue != "1" && secondaryTilesetValue != "TRUE" 
+         && secondaryTilesetValue != "0" && secondaryTilesetValue != "FALSE") {
+            logWarn(QString("Unexpected secondary tileset flag found in %1. Expected 'TRUE', 'FALSE', '1', or '0', but found '%2'")
+                    .arg(tilesetLabel).arg(secondaryTilesetValue));
             continue;
-
-        if (commands->at(i).at(0) == ".label") {
-            QString tilesetLabel = commands->at(i).at(1);
-            // Advance to command specifying whether or not it is a secondary tileset
-            i += 2;
-            if (commands->at(i).at(0) != ".byte") {
-                logWarn(QString("Unexpected command found for secondary tileset flag in tileset '%1'. Expected '.byte', but found: '%2'").arg(tilesetLabel).arg(commands->at(i).at(0)));
-                continue;
-            }
-
-            QString secondaryTilesetValue = commands->at(i).at(1);
-            if (secondaryTilesetValue != "TRUE" && secondaryTilesetValue != "FALSE" && secondaryTilesetValue != "0" && secondaryTilesetValue != "1") {
-                logWarn(QString("Unexpected secondary tileset flag found. Expected \"TRUE\", \"FALSE\", \"0\", or \"1\", but found: '%1'").arg(secondaryTilesetValue));
-                continue;
-            }
-
-            bool isSecondaryTileset = (secondaryTilesetValue == "TRUE" || secondaryTilesetValue == "1");
-            if (isSecondaryTileset)
-                allTilesets["secondary"].append(tilesetLabel);
-            else
-                allTilesets["primary"].append(tilesetLabel);
         }
 
-        i++;
+        bool isSecondaryTileset = (secondaryTilesetValue == "TRUE" || secondaryTilesetValue == "1");
+        if (isSecondaryTileset)
+            allTilesets["secondary"].append(tilesetLabel);
+        else
+            allTilesets["primary"].append(tilesetLabel);
     }
-
+    this->tilesetLabels = allTilesets;
     return allTilesets;
 }
 
-void Project::readTilesetProperties() {
-    QStringList defines;
-    QString text = readTextFile(root + "/include/fieldmap.h");
-    if (!text.isNull()) {
-        bool error = false;
-        QStringList definePrefixes;
-        definePrefixes << "NUM_";
-        QMap<QString, int> defines = readCDefines(text, definePrefixes);
-        auto it = defines.find("NUM_TILES_IN_PRIMARY");
-        if (it != defines.end()) {
-            Project::num_tiles_primary = it.value();
-        }
-        else {
-            error = true;
-        }
-        it = defines.find("NUM_TILES_TOTAL");
-        if (it != defines.end()) {
-            Project::num_tiles_total = it.value();
-        }
-        else {
-            error = true;
-        }
-        it = defines.find("NUM_METATILES_IN_PRIMARY");
-        if (it != defines.end()) {
-            Project::num_metatiles_primary = it.value();
-        }
-        else {
-            error = true;
-        }
-        it = defines.find("NUM_METATILES_TOTAL");
-        if (it != defines.end()) {
-            Project::num_metatiles_total = it.value();
-        }
-        else {
-            error = true;
-        }
-        it = defines.find("NUM_PALS_IN_PRIMARY");
-        if (it != defines.end()) {
-            Project::num_pals_primary = it.value();
-        }
-        else {
-            error = true;
-        }
-        it = defines.find("NUM_PALS_TOTAL");
-        if (it != defines.end()) {
-            Project::num_pals_total = it.value();
-        }
-        else {
-            error = true;
-        }
+void Project::readTilesetProperties() {        
+    QStringList definePrefixes;
+    definePrefixes << "NUM_";
+    QMap<QString, int> defines = parser.readCDefines("include/fieldmap.h", definePrefixes);
 
-        if (error)
-        {
-            logError("Some global tileset values could not be loaded. Using default values instead.");
-        }
+    auto it = defines.find("NUM_TILES_IN_PRIMARY");
+    if (it != defines.end()) {
+        Project::num_tiles_primary = it.value();
+    }
+    else {
+        logWarn(QString("Value for tileset property 'NUM_TILES_IN_PRIMARY' not found. Using default (%1) instead.")
+                .arg(Project::num_tiles_primary));
+    }
+    it = defines.find("NUM_TILES_TOTAL");
+    if (it != defines.end()) {
+        Project::num_tiles_total = it.value();
+    }
+    else {
+        logWarn(QString("Value for tileset property 'NUM_TILES_TOTAL' not found. Using default (%1) instead.")
+                .arg(Project::num_tiles_total));
+    }
+    it = defines.find("NUM_METATILES_IN_PRIMARY");
+    if (it != defines.end()) {
+        Project::num_metatiles_primary = it.value();
+    }
+    else {
+        logWarn(QString("Value for tileset property 'NUM_METATILES_IN_PRIMARY' not found. Using default (%1) instead.")
+                .arg(Project::num_metatiles_primary));
+    }
+    it = defines.find("NUM_METATILES_TOTAL");
+    if (it != defines.end()) {
+        Project::num_metatiles_total = it.value();
+    }
+    else {
+        logWarn(QString("Value for tileset property 'NUM_METATILES_TOTAL' not found. Using default (%1) instead.")
+                .arg(Project::num_metatiles_total));
+    }
+    it = defines.find("NUM_PALS_IN_PRIMARY");
+    if (it != defines.end()) {
+        Project::num_pals_primary = it.value();
+    }
+    else {
+        logWarn(QString("Value for tileset property 'NUM_PALS_IN_PRIMARY' not found. Using default (%1) instead.")
+                .arg(Project::num_pals_primary));
+    }
+    it = defines.find("NUM_PALS_TOTAL");
+    if (it != defines.end()) {
+        Project::num_pals_total = it.value();
+    }
+    else {
+        logWarn(QString("Value for tileset property 'NUM_PALS_TOTAL' not found. Using default (%1) instead.")
+                .arg(Project::num_pals_total));
     }
 }
 
 void Project::readRegionMapSections() {
-    QString filepath = root + "/include/constants/region_map_sections.h";
     this->mapSectionNameToValue.clear();
     this->mapSectionValueToName.clear();
-    QString text = readTextFile(filepath);
-    if (!text.isNull()) {
-        QStringList prefixes = (QStringList() << "MAPSEC_");
-        this->mapSectionNameToValue = readCDefines(text, prefixes);
-        for (QString defineName : this->mapSectionNameToValue.keys()) {
-            this->mapSectionValueToName.insert(this->mapSectionNameToValue[defineName], defineName);
-        }
-    } else {
-        logError(QString("Failed to read C defines file: '%1'").arg(filepath));
+
+    QStringList prefixes = (QStringList() << "MAPSEC_");
+    this->mapSectionNameToValue = parser.readCDefines("include/constants/region_map_sections.h", prefixes);
+    for (QString defineName : this->mapSectionNameToValue.keys()) {
+        this->mapSectionValueToName.insert(this->mapSectionNameToValue[defineName], defineName);
     }
 }
 
 void Project::readHealLocations() {
-    QString text = readTextFile(root + "/src/data/heal_locations.h");
+    QString text = parser.readTextFile(root + "/src/data/heal_locations.h");
     text.replace(QRegularExpression("//.*?(\r\n?|\n)|/\\*.*?\\*/", QRegularExpression::DotMatchesEverythingOption), "");
 
     dataQualifiers.insert("heal_locations", getDataQualifiers(text, "sHealLocations"));
 
-    QRegularExpression regex("MAP_GROUP\\((?<map>[A-Za-z0-9_]*)\\),\\s+MAP_NUM\\((\\1)\\),\\s+(?<x>[0-9A-Fa-fx]*),\\s+(?<y>[0-9A-Fa-fx]*)");
+    QRegularExpression regex("MAP_GROUP[\\(\\s]+(?<map>[A-Za-z0-9_]+)[\\s\\)]+,\\s*MAP_NUM[\\(\\s]+(\\1)[\\s\\)]+,\\s*(?<x>[0-9A-Fa-fx]+),\\s*(?<y>[0-9A-Fa-fx]+)");
     QRegularExpressionMatchIterator iter = regex.globalMatch(text);
 
+    flyableMaps.clear();
     for (int i = 1; iter.hasNext(); i++) {
         QRegularExpressionMatch match = iter.next();
         QString mapName = match.captured("map");
@@ -1583,62 +1748,52 @@ void Project::readHealLocations() {
 }
 
 void Project::readItemNames() {
-    QString filepath = root + "/include/constants/items.h";
     QStringList prefixes = (QStringList() << "ITEM_");
-    readCDefinesSorted(filepath, prefixes, itemNames);
+    parser.readCDefinesSorted("include/constants/items.h", prefixes, itemNames);
 }
 
 void Project::readFlagNames() {
-    QString filepath = root + "/include/constants/flags.h";
     QStringList prefixes = (QStringList() << "FLAG_");
-    readCDefinesSorted(filepath, prefixes, flagNames);
+    parser.readCDefinesSorted("include/constants/flags.h", prefixes, flagNames);
 }
 
 void Project::readVarNames() {
-    QString filepath = root + "/include/constants/vars.h";
     QStringList prefixes = (QStringList() << "VAR_");
-    readCDefinesSorted(filepath, prefixes, varNames);
+    parser.readCDefinesSorted("include/constants/vars.h", prefixes, varNames);
 }
 
 void Project::readMovementTypes() {
-    QString filepath = root + "/include/constants/event_object_movement_constants.h";
     QStringList prefixes = (QStringList() << "MOVEMENT_TYPE_");
-    readCDefinesSorted(filepath, prefixes, movementTypes);
+    parser.readCDefinesSorted("include/constants/event_object_movement_constants.h", prefixes, movementTypes);
 }
 
 void Project::readInitialFacingDirections() {
-    QString text = readTextFile(root + "/src/event_object_movement.c");
-    facingDirections = readNamedIndexCArray(text, "gInitialMovementTypeFacingDirections");
+    facingDirections = parser.readNamedIndexCArray("src/event_object_movement.c", "gInitialMovementTypeFacingDirections");
 }
 
 void Project::readMapTypes() {
-    QString filepath = root + "/include/constants/map_types.h";
-    QStringList prefixes = (QStringList() << "MAP_TYPE_");
-    readCDefinesSorted(filepath, prefixes, mapTypes);
+    QStringList prefixes = (QStringList() << "MAP_TYPE_");    
+    parser.readCDefinesSorted("include/constants/map_types.h", prefixes, mapTypes);
 }
 
 void Project::readMapBattleScenes() {
-    QString filepath = root + "/include/constants/map_types.h";
     QStringList prefixes = (QStringList() << "MAP_BATTLE_SCENE_");
-    readCDefinesSorted(filepath, prefixes, mapBattleScenes);
+    parser.readCDefinesSorted("include/constants/map_types.h", prefixes, mapBattleScenes);
 }
 
 void Project::readWeatherNames() {
-    QString filepath = root + "/include/constants/weather.h";
-    QStringList prefixes = (QStringList() << "WEATHER_");
-    readCDefinesSorted(filepath, prefixes, weatherNames);
+    QStringList prefixes = (QStringList() << "\\bWEATHER_");
+    parser.readCDefinesSorted("include/constants/weather.h", prefixes, weatherNames);
 }
 
 void Project::readCoordEventWeatherNames() {
-    QString filepath = root + "/include/constants/weather.h";
     QStringList prefixes = (QStringList() << "COORD_EVENT_WEATHER_");
-    readCDefinesSorted(filepath, prefixes, coordEventWeatherNames);
+    parser.readCDefinesSorted("include/constants/weather.h", prefixes, coordEventWeatherNames);
 }
 
 void Project::readSecretBaseIds() {
-    QString filepath = root + "/include/constants/secret_bases.h";
     QStringList prefixes = (QStringList() << "SECRET_BASE_[A-Za-z0-9_]*_[0-9]+");
-    readCDefinesSorted(filepath, prefixes, secretBaseIds);
+    parser.readCDefinesSorted("include/constants/secret_bases.h", prefixes, secretBaseIds);
 }
 
 void Project::readFruitTreeIds() {
@@ -1648,65 +1803,43 @@ void Project::readFruitTreeIds() {
 }
 
 void Project::readBgEventFacingDirections() {
-    QString filepath = root + "/include/constants/bg_event_constants.h";
     QStringList prefixes = (QStringList() << "BG_EVENT_PLAYER_FACING_");
-    readCDefinesSorted(filepath, prefixes, bgEventFacingDirections);
+    parser.readCDefinesSorted("include/constants/bg_event_constants.h", prefixes, bgEventFacingDirections);
 }
 
 void Project::readMetatileBehaviors() {
     this->metatileBehaviorMap.clear();
     this->metatileBehaviorMapInverse.clear();
-    QString filepath = root + "/include/constants/metatile_behaviors.h";
-    QString text = readTextFile(filepath);
-    if (!text.isNull()) {
-        QStringList prefixes = (QStringList() << "MB_");
-        this->metatileBehaviorMap = readCDefines(text, prefixes);
-        for (QString defineName : this->metatileBehaviorMap.keys()) {
-            this->metatileBehaviorMapInverse.insert(this->metatileBehaviorMap[defineName], defineName);
-        }
-    } else {
-        logError(QString("Failed to read C defines file: '%1'").arg(filepath));
-    }
-}
 
-void Project::readCDefinesSorted(QString filepath, QStringList prefixes, QStringList* definesToSet) {
-    QString text = readTextFile(filepath);
-    if (!text.isNull()) {
-        QMap<QString, int> defines = readCDefines(text, prefixes);
-
-        // The defines should to be sorted by their underlying value, not alphabetically.
-        // Reverse the map and read out the resulting keys in order.
-        QMultiMap<int, QString> definesInverse;
-        for (QString defineName : defines.keys()) {
-            definesInverse.insert(defines[defineName], defineName);
-        }
-        *definesToSet = definesInverse.values();
-    } else {
-        logError(QString("Failed to read C defines file: '%1'").arg(filepath));
+    QStringList prefixes = (QStringList() << "MB_");
+    this->metatileBehaviorMap = parser.readCDefines("include/constants/metatile_behaviors.h", prefixes);
+    for (QString defineName : this->metatileBehaviorMap.keys()) {
+        this->metatileBehaviorMapInverse.insert(this->metatileBehaviorMap[defineName], defineName);
     }
 }
 
 QStringList Project::getSongNames() {
-    QStringList names;
-    QString text = readTextFile(root + "/include/constants/songs.h");
-    if (!text.isNull()) {
-        QStringList songDefinePrefixes;
-        songDefinePrefixes << "SE_" << "MUS_";
-        QMap<QString, int> songDefines = readCDefines(text, songDefinePrefixes);
-        names = songDefines.keys();
-    }
+    QStringList songDefinePrefixes;
+    songDefinePrefixes << "SE_" << "MUS_";
+    QMap<QString, int> songDefines = parser.readCDefines("include/constants/songs.h", songDefinePrefixes);
+    QStringList names = songDefines.keys();
+
     return names;
 }
 
 QMap<QString, int> Project::getEventObjGfxConstants() {
-    QMap<QString, int> constants;
-    QString text = readTextFile(root + "/include/constants/event_objects.h");
-    if (!text.isNull()) {
-        QStringList eventObjGfxPrefixes;
-        eventObjGfxPrefixes << "EVENT_OBJ_GFX_";
-        constants = readCDefines(text, eventObjGfxPrefixes);
-    }
+    QStringList eventObjGfxPrefixes;
+    eventObjGfxPrefixes << "EVENT_OBJ_GFX_";
+
+    QMap<QString, int> constants = parser.readCDefines("include/constants/event_objects.h", eventObjGfxPrefixes);
+
     return constants;
+}
+
+void Project::readMiscellaneousConstants() {
+    QMap<QString, int> pokemonDefines = parser.readCDefines("include/constants/pokemon.h", QStringList() << "MIN_" << "MAX_");
+    miscConstants.insert("max_level_define", pokemonDefines.value("MAX_LEVEL") > pokemonDefines.value("MIN_LEVEL") ? pokemonDefines.value("MAX_LEVEL") : 100);
+    miscConstants.insert("min_level_define", pokemonDefines.value("MIN_LEVEL") < pokemonDefines.value("MAX_LEVEL") ? pokemonDefines.value("MIN_LEVEL") : 1);
 }
 
 QString Project::fixPalettePath(QString path) {
@@ -1734,12 +1867,7 @@ void Project::loadEventPixmaps(QList<Event*> objects) {
 
     QMap<QString, int> constants = getEventObjGfxConstants();
 
-    QString pointers_text = readTextFile(root + "/src/data/field_event_obj/event_object_graphics_info_pointers.h");
-    QString info_text = readTextFile(root + "/src/data/field_event_obj/event_object_graphics_info.h");
-    QString pic_text = readTextFile(root + "/src/data/field_event_obj/event_object_pic_tables.h");
-    QString assets_text = readTextFile(root + "/src/data/field_event_obj/event_object_graphics.h");
-
-    QStringList pointers = readCArray(pointers_text, "gEventObjectGraphicsInfoPointers");
+    QMap<QString, QString> pointerHash = parser.readNamedIndexCArray("src/data/field_event_obj/event_object_graphics_info_pointers.h", "gEventObjectGraphicsInfoPointers");
 
     for (Event *object : objects) {
         if (!object->pixmap.isNull()) {
@@ -1763,16 +1891,14 @@ void Project::loadEventPixmaps(QList<Event*> objects) {
         }
 
         if (event_type == EventType::Object) {
-            int sprite_id = constants.value(object->get("sprite"));
-
-            QString info_label = pointers.value(sprite_id).replace("&", "");
-            QStringList gfx_info = readCArray(info_text, info_label);
+            QString info_label = pointerHash[object->get("sprite")].replace("&", "");
+            QStringList gfx_info = parser.readCArray("src/data/field_event_obj/event_object_graphics_info.h", info_label);
             QString pic_label = gfx_info.value(14);
             QString dimensions_label = gfx_info.value(11);
             QString subsprites_label = gfx_info.value(12);
-            QString gfx_label = readCArray(pic_text, pic_label).value(0);
+            QString gfx_label = parser.readCArray("src/data/field_event_obj/event_object_pic_tables.h", pic_label).value(0);
             gfx_label = gfx_label.section(QRegExp("[\\(\\)]"), 1, 1);
-            QString path = readCIncbin(assets_text, gfx_label);
+            QString path = parser.readCIncbin("src/data/field_event_obj/event_object_graphics.h", gfx_label);
 
             if (!path.isNull()) {
                 path = fixGraphicPath(path);
@@ -1797,6 +1923,14 @@ void Project::loadEventPixmaps(QList<Event*> objects) {
     }
 }
 
+void Project::readSpeciesIconPaths() {
+    QMap<QString, QString> monIconNames = parser.readNamedIndexCArray("src/pokemon_icon.c", "gMonIconTable");
+    for (QString species : monIconNames.keys()) {
+        QString path = parser.readCIncbin("src/data/graphics/pokemon.h", monIconNames.value(species));
+        speciesToIconPath.insert(species, root + "/" + path.replace("4bpp", "png"));
+    }
+}
+
 void Project::saveMapHealEvents(Map *map) {
     // save heal event changes
     if (map->events["heal_event_group"].length() > 0) {
@@ -1814,95 +1948,6 @@ void Project::setNewMapEvents(Map *map) {
     map->events["heal_event_group"].clear();
     map->events["coord_event_group"].clear();
     map->events["bg_event_group"].clear();
-}
-
-QStringList Project::readCArray(QString text, QString label) {
-    QStringList list;
-
-    if (label.isNull()) {
-        return list;
-    }
-
-    QRegExp *re = new QRegExp(QString("\\b%1\\b\\s*\\[?\\s*\\]?\\s*=\\s*\\{([^\\}]*)\\}").arg(label));
-    int pos = re->indexIn(text);
-    if (pos != -1) {
-        QString body = re->cap(1);
-        body = body.replace(QRegExp("\\s*"), "");
-        list = body.split(',');
-        /*
-        QRegExp *inner = new QRegExp("&?\\b([A-Za-z0-9_\\(\\)]*)\\b,");
-        int pos = 0;
-        while ((pos = inner->indexIn(body, pos)) != -1) {
-            list << inner->cap(1);
-            pos += inner->matchedLength();
-        }
-        */
-    }
-
-    return list;
-}
-
-QMap<QString, QString> Project::readNamedIndexCArray(QString text, QString label) {
-    QMap<QString, QString> map;
-
-    QRegularExpression re_text(QString("\\b%1\\b\\s*\\[?\\s*\\]?\\s*=\\s*\\{([^\\}]*)\\}").arg(label));
-    text = re_text.match(text).captured(1).replace(QRegularExpression("\\s*"), "");
-    
-    QRegularExpression re("\\[(?<index>[A-Za-z1-9_]*)\\]=(?<value>[A-Za-z1-9_]*)");
-    QRegularExpressionMatchIterator iter = re.globalMatch(text);
-
-    while (iter.hasNext()) {
-        QRegularExpressionMatch match = iter.next();
-        QString key = match.captured("index");
-        QString value = match.captured("value");
-        map.insert(key, value);
-    }
-
-    return map;
-}
-
-QString Project::readCIncbin(QString text, QString label) {
-    QString path;
-
-    if (label.isNull()) {
-        return path;
-    }
-
-    QRegExp *re = new QRegExp(QString(
-        "\\b%1\\b"
-        "\\s*\\[?\\s*\\]?\\s*=\\s*"
-        "INCBIN_[US][0-9][0-9]?"
-        "\\(\"([^\"]*)\"\\)").arg(label));
-
-    int pos = re->indexIn(text);
-    if (pos != -1) {
-        path = re->cap(1);
-    }
-
-    return path;
-}
-
-QMap<QString, int> Project::readCDefines(QString text, QStringList prefixes) {
-    ParseUtil parser;
-    text.replace(QRegularExpression("(//.*)|(\\/+\\*+[^*]*\\*+\\/+)"), "");
-    QMap<QString, int> allDefines;
-    QMap<QString, int> filteredDefines;
-    QRegularExpression re("#define\\s+(?<defineName>\\w+)[^\\S\\n]+(?<defineValue>.+)");
-    QRegularExpressionMatchIterator iter = re.globalMatch(text);
-    while (iter.hasNext()) {
-        QRegularExpressionMatch match = iter.next();
-        QString name = match.captured("defineName");
-        QString expression = match.captured("defineValue");
-        if (expression == " ") continue;
-        int value = parser.evaluateDefine(expression, &allDefines);
-        allDefines.insert(name, value);
-        for (QString prefix : prefixes) {
-            if (name.startsWith(prefix) || QRegularExpression(prefix).match(name).hasMatch()) {
-                filteredDefines.insert(name, value);
-            }
-        }
-    }
-    return filteredDefines;
 }
 
 int Project::getNumTilesPrimary()
@@ -1933,25 +1978,4 @@ int Project::getNumPalettesPrimary()
 int Project::getNumPalettesTotal()
 {
     return Project::num_pals_total;
-}
-
-bool Project::tryParseJsonFile(QJsonDocument *out, QString filepath)
-{
-    QFile file(filepath);
-    if (!file.open(QIODevice::ReadOnly)) {
-        logError(QString("Error: Could not open %1 for reading").arg(filepath));
-        return false;
-    }
-
-    QByteArray data = file.readAll();
-    QJsonParseError parseError;
-    QJsonDocument jsonDoc = QJsonDocument::fromJson(data, &parseError);
-    file.close();
-    if (parseError.error != QJsonParseError::NoError) {
-        logError(QString("Error: Failed to parse json file %1: %2").arg(filepath).arg(parseError.errorString()));
-        return false;
-    }
-
-    *out = jsonDoc;
-    return true;
 }

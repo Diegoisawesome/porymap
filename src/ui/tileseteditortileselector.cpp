@@ -29,12 +29,12 @@ void TilesetEditorTileSelector::draw() {
     for (uint16_t tile = 0; tile < totalTiles; tile++) {
         QImage tileImage;
         if (tile < primaryLength) {
-            tileImage = getColoredTileImage(tile, this->primaryTileset, this->secondaryTileset, this->paletteId).scaled(16, 16);
+            tileImage = getPalettedTileImage(tile, this->primaryTileset, this->secondaryTileset, this->paletteId).scaled(16, 16);
         } else if (tile < Project::getNumTilesPrimary()) {
             tileImage = QImage(16, 16, QImage::Format_RGBA8888);
             tileImage.fill(palette.at(0));
         } else if (tile < Project::getNumTilesPrimary() + secondaryLength) {
-            tileImage = getColoredTileImage(tile, this->primaryTileset, this->secondaryTileset, this->paletteId).scaled(16, 16);
+            tileImage = getPalettedTileImage(tile, this->primaryTileset, this->secondaryTileset, this->paletteId).scaled(16, 16);
         } else {
             tileImage = QImage(16, 16, QImage::Format_RGBA8888);
             QPainter painter(&tileImage);
@@ -98,8 +98,30 @@ QList<Tile> TilesetEditorTileSelector::getSelectedTiles() {
         return this->externalSelectedTiles;
     } else {
         QList<Tile> tiles;
-        for (uint16_t tile : this->selectedTiles) {
-            tiles.append(Tile(tile, this->xFlip, this->yFlip, this->paletteId));
+        QList<QList<Tile>> tileMatrix;
+        QList<uint16_t> selected = this->selectedTiles;
+        QPoint dimensions = this->getSelectionDimensions();
+        int width = dimensions.x();
+        int height = dimensions.y();
+        for (int j = 0; j < height; j++) {
+            QList<Tile> row;
+            for (int i = 0; i < width; i++) {
+                int index = i + j * width;
+                uint16_t tile = selected.at(index);
+                if (this->xFlip)
+                    row.prepend(Tile(tile, this->xFlip, this->yFlip, this->paletteId));
+                else
+                    row.append(Tile(tile, this->xFlip, this->yFlip, this->paletteId));
+            }
+            if (this->yFlip)
+                tileMatrix.prepend(row);
+            else
+                tileMatrix.append(row);
+        }
+        for (int j = 0; j < height; j++) {
+            for (int i = 0; i < width; i++) {
+                tiles.append(tileMatrix.at(j).at(i));
+            }
         }
         return tiles;
     }
@@ -187,18 +209,17 @@ QImage TilesetEditorTileSelector::buildPrimaryTilesIndexedImage() {
     }
 
     int primaryLength = this->primaryTileset->tiles->length();
-    int height = primaryLength / this->numTilesWide;
-    QList<QRgb> palette = Tileset::getPalette(this->paletteId, this->primaryTileset, this->secondaryTileset);
+    int height = primaryLength / this->numTilesWide + 1;
     QImage image(this->numTilesWide * 8, height * 8, QImage::Format_RGBA8888);
 
     QPainter painter(&image);
     for (uint16_t tile = 0; tile < primaryLength; tile++) {
         QImage tileImage;
         if (tile < primaryLength) {
-            tileImage = getColoredTileImage(tile, this->primaryTileset, this->secondaryTileset, this->paletteId);
+            tileImage = getGreyscaleTileImage(tile, this->primaryTileset, this->secondaryTileset);
         } else {
             tileImage = QImage(8, 8, QImage::Format_RGBA8888);
-            tileImage.fill(palette.at(0));
+            tileImage.fill(qRgb(0, 0, 0));
         }
 
         int y = tile / this->numTilesWide;
@@ -209,8 +230,12 @@ QImage TilesetEditorTileSelector::buildPrimaryTilesIndexedImage() {
 
     painter.end();
 
-    QVector<QRgb> colorTable = palette.toVector();
-    return image.convertToFormat(QImage::Format::Format_Indexed8, colorTable);
+    // Image is first converted using greyscale so that palettes with duplicate colors
+    // are properly represented in the final image.
+    QImage indexedImage = image.convertToFormat(QImage::Format::Format_Indexed8, greyscalePalette.toVector());
+    QList<QRgb> palette = Tileset::getPalette(this->paletteId, this->primaryTileset, this->secondaryTileset);
+    indexedImage.setColorTable(palette.toVector());
+    return indexedImage;
 }
 
 QImage TilesetEditorTileSelector::buildSecondaryTilesIndexedImage() {
@@ -220,8 +245,7 @@ QImage TilesetEditorTileSelector::buildSecondaryTilesIndexedImage() {
     }
 
     int secondaryLength = this->secondaryTileset->tiles->length();
-    int height = secondaryLength / this->numTilesWide;
-    QList<QRgb> palette = Tileset::getPalette(this->paletteId, this->primaryTileset, this->secondaryTileset);
+    int height = secondaryLength / this->numTilesWide + 1;
     QImage image(this->numTilesWide * 8, height * 8, QImage::Format_RGBA8888);
 
     QPainter painter(&image);
@@ -229,10 +253,10 @@ QImage TilesetEditorTileSelector::buildSecondaryTilesIndexedImage() {
     for (uint16_t tile = 0; tile < secondaryLength; tile++) {
         QImage tileImage;
         if (tile < secondaryLength) {
-            tileImage = getColoredTileImage(tile + primaryLength, this->primaryTileset, this->secondaryTileset, this->paletteId);
+            tileImage = getGreyscaleTileImage(tile + primaryLength, this->primaryTileset, this->secondaryTileset);
         } else {
             tileImage = QImage(8, 8, QImage::Format_RGBA8888);
-            tileImage.fill(palette.at(0));
+            tileImage.fill(qRgb(0, 0, 0));
         }
 
         int y = tile / this->numTilesWide;
@@ -243,6 +267,10 @@ QImage TilesetEditorTileSelector::buildSecondaryTilesIndexedImage() {
 
     painter.end();
 
-    QVector<QRgb> colorTable = palette.toVector();
-    return image.convertToFormat(QImage::Format::Format_Indexed8, colorTable);
+    // Image is first converted using greyscale so that palettes with duplicate colors
+    // are properly represented in the final image.
+    QImage indexedImage = image.convertToFormat(QImage::Format::Format_Indexed8, greyscalePalette.toVector());
+    QList<QRgb> palette = Tileset::getPalette(this->paletteId, this->primaryTileset, this->secondaryTileset);
+    indexedImage.setColorTable(palette.toVector());
+    return indexedImage;
 }

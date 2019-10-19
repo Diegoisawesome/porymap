@@ -11,6 +11,7 @@
 #include "customattributestable.h"
 
 #include <QFileDialog>
+#include <QDirIterator>
 #include <QStandardItemModel>
 #include <QShortcut>
 #include <QSpinBox>
@@ -80,6 +81,12 @@ void MainWindow::initCustomUI() {
     ui->mapList->setContextMenuPolicy(Qt::CustomContextMenu);
     connect(ui->mapList, SIGNAL(customContextMenuRequested(const QPoint &)),
             this, SLOT(onOpenMapListContextMenu(const QPoint &)));
+
+    QStackedWidget *stack = ui->stackedWidget_WildMons;
+    QComboBox *labelCombo = ui->comboBox_EncounterGroupLabel;
+    connect(labelCombo, QOverload<int>::of(&QComboBox::currentIndexChanged), [=](int index){
+        stack->setCurrentIndex(index);
+    });
 }
 
 void MainWindow::initExtraSignals() {
@@ -122,7 +129,7 @@ void MainWindow::initMiscHeapObjects() {
 }
 
 void MainWindow::initMapSortOrder() {
-    QMenu *mapSortOrderMenu = new QMenu();
+    QMenu *mapSortOrderMenu = new QMenu(this);
     QActionGroup *mapSortOrderActionGroup = new QActionGroup(ui->toolButton_MapSortOrder);
 
     mapSortOrderMenu->addAction(ui->actionSort_by_Group);
@@ -143,6 +150,9 @@ void MainWindow::initMapSortOrder() {
 
 void MainWindow::setProjectSpecificUIVisibility()
 {
+    if (!projectConfig.getEncounterJsonActive())
+        ui->tabWidget->removeTab(4);
+
     switch (projectConfig.getBaseGameVersion())
     {
     case BaseGameVersion::pokeruby:
@@ -162,6 +172,8 @@ void MainWindow::setProjectSpecificUIVisibility()
         ui->label_AllowRunning->setVisible(true);
         ui->label_AllowBiking->setVisible(true);
         ui->label_AllowEscapeRope->setVisible(true);
+        break;
+    case BaseGameVersion::pokefirered:
         break;
     }
 }
@@ -217,6 +229,7 @@ void MainWindow::loadUserSettings() {
     ui->horizontalSlider_MetatileZoom->blockSignals(true);
     ui->horizontalSlider_MetatileZoom->setValue(porymapConfig.getMetatilesZoom());
     ui->horizontalSlider_MetatileZoom->blockSignals(false);
+    setTheme(porymapConfig.getTheme());
 }
 
 void MainWindow::restoreWindowState() {
@@ -227,6 +240,17 @@ void MainWindow::restoreWindowState() {
     this->ui->splitter_map->restoreState(geometry.value("map_splitter_state"));
     this->ui->splitter_events->restoreState(geometry.value("events_splitter_state"));
     this->ui->splitter_main->restoreState(geometry.value("main_splitter_state"));
+}
+
+void MainWindow::setTheme(QString theme) {
+    if (theme == "default") {
+        setStyleSheet("");
+    } else {
+        QFile File(QString(":/themes/%1.qss").arg(theme));
+        File.open(QFile::ReadOnly);
+        QString stylesheet = QLatin1String(File.readAll());
+        setStyleSheet(stylesheet);
+    }
 }
 
 bool MainWindow::openRecentProject() {
@@ -257,7 +281,7 @@ bool MainWindow::openProject(QString dir) {
     bool already_open = isProjectOpen() && (editor->project->root == dir);
     if (!already_open) {
         editor->project = new Project;
-        editor->project->root = dir;
+        editor->project->set_root(dir);
         setWindowTitle(editor->project->getProjectTitle());
         loadDataStructures();
         populateMapList();
@@ -343,7 +367,7 @@ bool MainWindow::setMap(QString map_name, bool scrollTreeView) {
 
     if (scrollTreeView) {
         // Make sure we clear the filter first so we actually have a scroll target
-        mapListProxyModel->setFilterRegExp(QString::null);
+        mapListProxyModel->setFilterRegExp(QString());
         ui->mapList->setCurrentIndex(mapListProxyModel->mapFromSource(mapListIndexes.value(map_name)));
         ui->mapList->scrollTo(ui->mapList->currentIndex(), QAbstractItemView::PositionAtCenter);
     }
@@ -443,14 +467,7 @@ void MainWindow::setRecentMap(QString mapName) {
 }
 
 void MainWindow::displayMapProperties() {
-    ui->comboBox_Song->clear();
-    ui->comboBox_Location->clear();
     ui->checkBox_Visibility->setChecked(false);
-    ui->comboBox_Weather->clear();
-    ui->comboBox_Type->clear();
-    ui->comboBox_BattleScene->clear();
-    ui->comboBox_PrimaryTileset->clear();
-    ui->comboBox_SecondaryTileset->clear();
     ui->checkBox_ShowLocation->setChecked(false);
     ui->checkBox_AllowRunning->setChecked(false);
     ui->checkBox_AllowBiking->setChecked(false);
@@ -462,32 +479,15 @@ void MainWindow::displayMapProperties() {
     }
     ui->frame_3->setEnabled(true);
     Map *map = editor->map;
-    Project *project = editor->project;
 
-    QStringList songs = project->getSongNames();
-    ui->comboBox_Song->addItems(songs);
     ui->comboBox_Song->setCurrentText(map->song);
-
-    ui->comboBox_Location->addItems(project->mapSectionValueToName.values());
     ui->comboBox_Location->setCurrentText(map->location);
-
-    QMap<QString, QStringList> tilesets = project->getTilesetLabels();
-    ui->comboBox_PrimaryTileset->addItems(tilesets.value("primary"));
     ui->comboBox_PrimaryTileset->setCurrentText(map->layout->tileset_primary_label);
-    ui->comboBox_SecondaryTileset->addItems(tilesets.value("secondary"));
     ui->comboBox_SecondaryTileset->setCurrentText(map->layout->tileset_secondary_label);
-
     ui->checkBox_Visibility->setChecked(map->requiresFlash.toInt() > 0 || map->requiresFlash == "TRUE");
-
-    ui->comboBox_Weather->addItems(*project->weatherNames);
     ui->comboBox_Weather->setCurrentText(map->weather);
-
-    ui->comboBox_Type->addItems(*project->mapTypes);
     ui->comboBox_Type->setCurrentText(map->type);
-
-    ui->comboBox_BattleScene->addItems(*project->mapBattleScenes);
     ui->comboBox_BattleScene->setCurrentText(map->battle_scene);
-
     ui->checkBox_ShowLocation->setChecked(map->show_location.toInt() > 0 || map->show_location == "TRUE");
     ui->checkBox_AllowRunning->setChecked(map->allowRunning.toInt() > 0 || map->allowRunning == "TRUE");
     ui->checkBox_AllowBiking->setChecked(map->allowBiking.toInt() > 0 || map->allowBiking == "TRUE");
@@ -506,35 +506,35 @@ void MainWindow::displayMapProperties() {
     ui->tableWidget_CustomHeaderFields->blockSignals(false);
 }
 
-void MainWindow::on_comboBox_Song_activated(const QString &song)
+void MainWindow::on_comboBox_Song_currentTextChanged(const QString &song)
 {
     if (editor && editor->map) {
         editor->map->song = song;
     }
 }
 
-void MainWindow::on_comboBox_Location_activated(const QString &location)
+void MainWindow::on_comboBox_Location_currentTextChanged(const QString &location)
 {
     if (editor && editor->map) {
         editor->map->location = location;
     }
 }
 
-void MainWindow::on_comboBox_Weather_activated(const QString &weather)
+void MainWindow::on_comboBox_Weather_currentTextChanged(const QString &weather)
 {
     if (editor && editor->map) {
         editor->map->weather = weather;
     }
 }
 
-void MainWindow::on_comboBox_Type_activated(const QString &type)
+void MainWindow::on_comboBox_Type_currentTextChanged(const QString &type)
 {
     if (editor && editor->map) {
         editor->map->type = type;
     }
 }
 
-void MainWindow::on_comboBox_BattleScene_activated(const QString &battle_scene)
+void MainWindow::on_comboBox_BattleScene_currentTextChanged(const QString &battle_scene)
 {
     if (editor && editor->map) {
         editor->map->battle_scene = battle_scene;
@@ -626,6 +626,20 @@ void MainWindow::loadDataStructures() {
     project->readMetatileBehaviors();
     project->readTilesetProperties();
     project->readHealLocations();
+    project->readMiscellaneousConstants();
+    project->readSpeciesIconPaths();
+    project->readWildMonData();
+
+    // set up project ui comboboxes
+    QStringList songs = project->getSongNames();
+    ui->comboBox_Song->addItems(songs);
+    ui->comboBox_Location->addItems(project->mapSectionValueToName.values());
+    QMap<QString, QStringList> tilesets = project->getTilesetLabels();
+    ui->comboBox_PrimaryTileset->addItems(tilesets.value("primary"));
+    ui->comboBox_SecondaryTileset->addItems(tilesets.value("secondary"));
+    ui->comboBox_Weather->addItems(*project->weatherNames);
+    ui->comboBox_BattleScene->addItems(*project->mapBattleScenes);
+    ui->comboBox_Type->addItems(*project->mapTypes);
 }
 
 void MainWindow::populateMapList() {
@@ -1015,6 +1029,7 @@ void MainWindow::on_mapList_activated(const QModelIndex &index)
 }
 
 void MainWindow::drawMapListIcons(QAbstractItemModel *model) {
+    projectHasUnsavedChanges = false;
     QList<QModelIndex> list;
     list.append(QModelIndex());
     while (list.length()) {
@@ -1032,6 +1047,7 @@ void MainWindow::drawMapListIcons(QAbstractItemModel *model) {
                     map->setIcon(*mapIcon);
                     if (editor->project->map_cache->value(map_name)->hasUnsavedChanges()) {
                         map->setIcon(*mapEditedIcon);
+                        projectHasUnsavedChanges = true;
                     }
                     if (editor->map->name == map_name) {
                         map->setIcon(*mapOpenedIcon);
@@ -1095,6 +1111,9 @@ void MainWindow::on_tabWidget_currentChanged(int index)
         editor->setEditingObjects();
     } else if (index == 3) {
         editor->setEditingConnections();
+    }
+    if (index != 4) {
+        editor->saveEncounterTabData();
     }
 }
 
@@ -1365,7 +1384,7 @@ void MainWindow::updateSelectedObjects() {
             frame->ui->sprite->setVisible(true);
             frame->ui->comboBox_sprite->addItems(event_obj_gfx_constants.keys());
             frame->ui->comboBox_sprite->setCurrentText(item->event->get("sprite"));
-            connect(frame->ui->comboBox_sprite, SIGNAL(activated(QString)), item, SLOT(set_sprite(QString)));
+            connect(frame->ui->comboBox_sprite, &QComboBox::currentTextChanged, item, &DraggablePixmapItem::set_sprite);
 
             /*
             frame->ui->script->setVisible(true);
@@ -1444,6 +1463,7 @@ void MainWindow::updateSelectedObjects() {
                 combo->setToolTip("The trainer type of this event object.\n"
                                   "If it is not a trainer, use NONE. SEE ALL DIRECTIONS\n"
                                   "should only be used with a sight radius of 1.");
+                combo->setMinimumContentsLength(10);
 
                 int index = combo->findData(value);
                 if (index != -1) {
@@ -1540,15 +1560,18 @@ void MainWindow::updateSelectedObjects() {
                 combo->setToolTip("The maximum number of metatiles this object\n"
                                   "is allowed to move left or right during its\n"
                                   "normal movement behavior actions.");
+                combo->setMinimumContentsLength(4);
             } else if (key == "radius_y") {
                 combo->setToolTip("The maximum number of metatiles this object\n"
                                   "is allowed to move up or down during its\n"
                                   "normal movement behavior actions.");
+                combo->setMinimumContentsLength(4);
             } else if (key == "script_label") {
                 combo->setToolTip("The script which is executed with this event.");
             } else if (key == "sight_radius_tree_id") {
                 combo->setToolTip("The maximum sight range of a trainer,\n"
                                   "OR the unique id of the berry tree.");
+                combo->setMinimumContentsLength(4);
             } else {
                 combo->addItem(value);
             }
@@ -1958,10 +1981,18 @@ void MainWindow::onTilesetsSaved(QString primaryTilesetLabel, QString secondaryT
 
 void MainWindow::on_action_Export_Map_Image_triggered()
 {
-    QString defaultFilepath = QString("%1/%2.png").arg(editor->project->root).arg(editor->map->name);
-    QString filepath = QFileDialog::getSaveFileName(this, "Export Map Image", defaultFilepath, "Image Files (*.png *.jpg *.bmp)");
-    if (!filepath.isEmpty()) {
-        editor->map_item->pixmap().save(filepath);
+    if (!this->mapImageExporter) {
+        this->mapImageExporter = new MapImageExporter(this, this->editor);
+        connect(this->mapImageExporter, &QObject::destroyed, [=](QObject *) { this->mapImageExporter = nullptr; });
+        this->mapImageExporter->setAttribute(Qt::WA_DeleteOnClose);
+    }
+
+    if (!this->mapImageExporter->isVisible()) {
+        this->mapImageExporter->show();
+    } else if (this->mapImageExporter->isMinimized()) {
+        this->mapImageExporter->showNormal();
+    } else {
+        this->mapImageExporter->activateWindow();
     }
 }
 
@@ -1977,7 +2008,8 @@ void MainWindow::on_spinBox_ConnectionOffset_valueChanged(int offset)
 
 void MainWindow::on_comboBox_ConnectedMap_currentTextChanged(const QString &mapName)
 {
-    editor->setConnectionMap(mapName);
+    if (editor->project->mapNames->contains(mapName))
+        editor->setConnectionMap(mapName);
 }
 
 void MainWindow::on_pushButton_AddConnection_clicked()
@@ -1990,26 +2022,40 @@ void MainWindow::on_pushButton_RemoveConnection_clicked()
     editor->removeCurrentConnection();
 }
 
+void MainWindow::on_pushButton_NewWildMonGroup_clicked() {
+    editor->addNewWildMonGroup(this);
+}
+
+void MainWindow::on_pushButton_ConfigureEncountersJSON_clicked() {
+    editor->configureEncounterJSON(this);
+}
+
 void MainWindow::on_comboBox_DiveMap_currentTextChanged(const QString &mapName)
 {
-    editor->updateDiveMap(mapName);
+    if (editor->project->mapNames->contains(mapName))
+        editor->updateDiveMap(mapName);
 }
 
 void MainWindow::on_comboBox_EmergeMap_currentTextChanged(const QString &mapName)
 {
-    editor->updateEmergeMap(mapName);
+    if (editor->project->mapNames->contains(mapName))
+        editor->updateEmergeMap(mapName);
 }
 
-void MainWindow::on_comboBox_PrimaryTileset_activated(const QString &tilesetLabel)
+void MainWindow::on_comboBox_PrimaryTileset_currentTextChanged(const QString &tilesetLabel)
 {
-    editor->updatePrimaryTileset(tilesetLabel);
-    on_horizontalSlider_MetatileZoom_valueChanged(ui->horizontalSlider_MetatileZoom->value());
+    if (editor->project->tilesetLabels["primary"].contains(tilesetLabel) && editor->map) {
+        editor->updatePrimaryTileset(tilesetLabel);
+        on_horizontalSlider_MetatileZoom_valueChanged(ui->horizontalSlider_MetatileZoom->value());
+    }
 }
 
-void MainWindow::on_comboBox_SecondaryTileset_activated(const QString &tilesetLabel)
+void MainWindow::on_comboBox_SecondaryTileset_currentTextChanged(const QString &tilesetLabel)
 {
-    editor->updateSecondaryTileset(tilesetLabel);
-    on_horizontalSlider_MetatileZoom_valueChanged(ui->horizontalSlider_MetatileZoom->value());
+    if (editor->project->tilesetLabels["secondary"].contains(tilesetLabel) && editor->map) {
+        editor->updateSecondaryTileset(tilesetLabel);
+        on_horizontalSlider_MetatileZoom_valueChanged(ui->horizontalSlider_MetatileZoom->value());
+    }
 }
 
 void MainWindow::on_pushButton_clicked()
@@ -2128,6 +2174,39 @@ void MainWindow::on_actionAbout_Porymap_triggered()
     window->show();
 }
 
+void MainWindow::on_actionThemes_triggered()
+{
+    QStringList themes;
+    QRegularExpression re(":/themes/([A-z0-9_-]+).qss");
+    themes.append("default");
+    QDirIterator it(":/themes", QDirIterator::Subdirectories);
+    while (it.hasNext()) {
+        QString themeName = re.match(it.next()).captured(1);
+        themes.append(themeName);
+    }
+
+    QDialog themeSelectorWindow(this);
+    QFormLayout form(&themeSelectorWindow);
+
+    NoScrollComboBox *themeSelector = new NoScrollComboBox();
+    themeSelector->addItems(themes);
+    themeSelector->setCurrentText(porymapConfig.getTheme());
+    form.addRow(new QLabel("Themes"), themeSelector);
+
+    QDialogButtonBox buttonBox(QDialogButtonBox::Apply | QDialogButtonBox::Close, Qt::Horizontal, &themeSelectorWindow);
+    form.addRow(&buttonBox);
+    connect(&buttonBox, &QDialogButtonBox::clicked, [&themeSelectorWindow, &buttonBox, themeSelector, this](QAbstractButton *button){
+        if (button == buttonBox.button(QDialogButtonBox::Apply)) {
+            QString theme = themeSelector->currentText();
+            porymapConfig.setTheme(theme);
+            this->setTheme(theme);
+        }
+    });
+    connect(&buttonBox, SIGNAL(rejected()), &themeSelectorWindow, SLOT(reject()));
+
+    themeSelectorWindow.exec();
+}
+
 void MainWindow::on_pushButton_AddCustomHeaderField_clicked()
 {
     int rowIndex = this->ui->tableWidget_CustomHeaderFields->rowCount();
@@ -2159,7 +2238,7 @@ void MainWindow::on_pushButton_DeleteCustomHeaderField_clicked()
     }
 }
 
-void MainWindow::on_tableWidget_CustomHeaderFields_cellChanged(int row, int column)
+void MainWindow::on_tableWidget_CustomHeaderFields_cellChanged(int, int)
 {
     this->editor->updateCustomMapHeaderValues(this->ui->tableWidget_CustomHeaderFields);
 }
@@ -2205,6 +2284,21 @@ void MainWindow::on_actionRegion_Map_Editor_triggered() {
 }
 
 void MainWindow::closeEvent(QCloseEvent *event) {
+    if (projectHasUnsavedChanges || editor->map->hasUnsavedChanges()) {
+        QMessageBox::StandardButton result = QMessageBox::question(
+            this, "porymap", "The project has been modified, save changes?",
+            QMessageBox::No | QMessageBox::Yes | QMessageBox::Cancel, QMessageBox::Yes);
+
+        if (result == QMessageBox::Yes) {
+            editor->saveProject();
+        } else if (result == QMessageBox::No) {
+            logWarn("Closing porymap with unsaved changes.");
+        } else if (result == QMessageBox::Cancel) {
+            event->ignore();
+            return;
+        }
+    }
+
     porymapConfig.setGeometry(
         this->saveGeometry(),
         this->saveState(),
@@ -2213,6 +2307,7 @@ void MainWindow::closeEvent(QCloseEvent *event) {
         this->ui->splitter_main->saveState()
     );
     porymapConfig.save();
+    projectConfig.save();
 
     QMainWindow::closeEvent(event);
 }
