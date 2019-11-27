@@ -1797,9 +1797,9 @@ void Project::readSecretBaseIds() {
 }
 
 void Project::readFruitTreeIds() {
-    QString filepath = root + "/include/constants/fruit_trees.h";
+    QString filepath = "/include/constants/fruit_trees.h";
     QStringList prefixes = (QStringList() << "FRUIT_TREE_");
-    readCDefinesSorted(filepath, prefixes, fruitTreeIds);
+    parser.readCDefinesSorted(filepath, prefixes, fruitTreeIds);
 }
 
 void Project::readBgEventFacingDirections() {

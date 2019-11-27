@@ -1834,13 +1834,16 @@ void MainWindow::on_toolButton_deleteObject_clicked()
                     index++;
                 else
                     index--;
-                Event *event = editor->map->events.value(event_group).at(index);
                 if (event_group != "heal_event_group") {
-                    for (QGraphicsItem *child : editor->events_group->childItems()) {
-                        DraggablePixmapItem *event_item = static_cast<DraggablePixmapItem *>(child);
-                        if (event_item->event == event) {
-                            next_selected_event = event_item;
-                            break;
+                    if (index >= 0 && index < editor->map->events.value(event_group).size())
+                    {
+                        Event *event = editor->map->events.value(event_group).at(index);
+                        for (QGraphicsItem *child : editor->events_group->childItems()) {
+                            DraggablePixmapItem *event_item = static_cast<DraggablePixmapItem *>(child);
+                            if (event_item->event == event) {
+                                next_selected_event = event_item;
+                                break;
+                            }
                         }
                     }
                     editor->deleteEvent(item->event);
