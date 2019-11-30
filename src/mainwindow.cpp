@@ -1078,7 +1078,7 @@ void MainWindow::redo() {
 
 // Open current map scripts in system default editor for .inc files
 void MainWindow::openInTextEditor() {
-    QString path = QDir::cleanPath("file://" + editor->project->root + QDir::separator() + "data/maps/" + editor->map->name + "/scripts.inc");
+    QString path = QDir::cleanPath("file://" + editor->project->root + QDir::separator() + "data/maps/" + editor->map->name + "/scripts" + editor->project->getScriptFileExtension(projectConfig.getUsePoryScript()));
     QDesktopServices::openUrl(QUrl(path));
 }
 
@@ -1830,20 +1830,21 @@ void MainWindow::on_toolButton_deleteObject_clicked()
             for (DraggablePixmapItem *item : *editor->selected_events) {
                 QString event_group = item->event->get("event_group_type");
                 int index = editor->map->events.value(event_group).indexOf(item->event);
+                // Get the index for the event that should be selected after this event has been deleted.
+                // If it's at the end of the list, select the previous event, otherwise select the next one.
                 if (index != editor->map->events.value(event_group).size() - 1)
                     index++;
                 else
                     index--;
+                Event *event = nullptr;
+                if (index >= 0)
+                    event = editor->map->events.value(event_group).at(index);
                 if (event_group != "heal_event_group") {
-                    if (index >= 0 && index < editor->map->events.value(event_group).size())
-                    {
-                        Event *event = editor->map->events.value(event_group).at(index);
-                        for (QGraphicsItem *child : editor->events_group->childItems()) {
-                            DraggablePixmapItem *event_item = static_cast<DraggablePixmapItem *>(child);
-                            if (event_item->event == event) {
-                                next_selected_event = event_item;
-                                break;
-                            }
+                    for (QGraphicsItem *child : editor->events_group->childItems()) {
+                        DraggablePixmapItem *event_item = static_cast<DraggablePixmapItem *>(child);
+                        if (event_item->event == event) {
+                            next_selected_event = event_item;
+                            break;
                         }
                     }
                     editor->deleteEvent(item->event);
