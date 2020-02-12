@@ -6,8 +6,21 @@ and this project somewhat adheres to [Semantic Versioning](https://semver.org/sp
 
 The **"Breaking Changes"** listed below are changes that have been made in the decompilation projects (e.g. pokeemerald), which porymap requires in order to work properly. If porymap is used on a project that is not up-to-date with the breaking changes, then porymap will likely break or behave improperly.
 
-## Unreleased
-Nothing, yet.
+## [Unreleased]
+### Added
+- Add optional support for Poryscript script files via the `use_poryscript` config option.
+- Selecting a group of metatiles from the map area now also copies the collision properties, too.
+
+### Changed
+- Draw map connections with the current map's tilesets to more accurately mimic their appearance in-game.
+
+### Fixed
+- Fix index-out-of-bounds crash when deleting the last event in an event type group.
+- Fix bug where exporting tileset images could add an extra row of junk at the end.
+- Fix crashes when encountering an error opening a project or map.
+- Fix bug where comboboxes and wild pokemon data could grow large when opening projects multiple times during the same porymap session.
+- Fix bug where dragging the metatile selector would visually extend beyond map boundary.
+
 
 ## [2.0.0] - 2019-10-16
 ### Breaking Changes

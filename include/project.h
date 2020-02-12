@@ -75,13 +75,13 @@ public:
     QMap<QString, QStringList> tilesetLabels;
 
     Blockdata* readBlockdata(QString);
-    void loadBlockdata(Map*);
+    bool loadBlockdata(Map*);
 
     void saveTextFile(QString path, QString text);
     void appendTextFile(QString path, QString text);
     void deleteFile(QString path);
 
-    void readMapGroups();
+    bool readMapGroups();
     Map* addNewMapToGroup(QString mapName, int groupNum);
     Map* addNewMapToGroup(QString, int, Map*, bool);
     QString getNewMapName();
@@ -90,20 +90,20 @@ public:
     QString readMapLayoutId(QString map_name);
     QString readMapLocation(QString map_name);
 
-    void readWildMonData();
+    bool readWildMonData();
     QMap<QString, QMap<QString, WildPokemonHeader>> wildMonData;
     QVector<EncounterField> wildMonFields;
     QVector<QString> encounterGroupLabels;
     QMap<QString, QJsonObject> extraEncounterGroups;
 
-    void readSpeciesIconPaths();
+    bool readSpeciesIconPaths();
     QMap<QString, QString> speciesToIconPath;
 
     QMap<QString, bool> getTopLevelMapFields();
     bool loadMapData(Map*);
-    void readMapLayouts();
-    void loadMapLayout(Map*);
-    void loadMapTilesets(Map*);
+    bool readMapLayouts();
+    bool loadMapLayout(Map*);
+    bool loadMapTilesets(Map*);
     void loadTilesetAssets(Tileset*);
     void loadTilesetTiles(Tileset*, QImage);
     void loadTilesetMetatiles(Tileset*);
@@ -130,30 +130,33 @@ public:
     QStringList getSongNames();
     QStringList getVisibilities();
     QMap<QString, QStringList> getTilesetLabels();
-    void readTilesetProperties();
-    void readRegionMapSections();
-    void readItemNames();
-    void readFlagNames();
-    void readVarNames();
-    void readMovementTypes();
-    void readInitialFacingDirections();
-    void readMapTypes();
-    void readMapBattleScenes();
-    void readWeatherNames();
-    void readCoordEventWeatherNames();
-    void readSecretBaseIds();
-    void readFruitTreeIds();
-    void readBgEventFacingDirections();
-    void readMetatileBehaviors();
-    void readHealLocations();
-    void readMiscellaneousConstants();
+    bool readTilesetProperties();
+    bool readRegionMapSections();
+    bool readItemNames();
+    bool readFlagNames();
+    bool readVarNames();
+    bool readMovementTypes();
+    bool readInitialFacingDirections();
+    bool readMapTypes();
+    bool readMapBattleScenes();
+    bool readWeatherNames();
+    bool readCoordEventWeatherNames();
+    bool readSecretBaseIds();
+    bool readFruitTreeIds();
+    bool readBgEventFacingDirections();
+    bool readMetatileBehaviors();
+    bool readHealLocations();
+    bool readMiscellaneousConstants();
 
     void loadEventPixmaps(QList<Event*> objects);
     QMap<QString, int> getEventObjGfxConstants();
     QString fixPalettePath(QString path);
     QString fixGraphicPath(QString path);
 
-    void loadMapBorder(Map *map);
+    QString getScriptFileExtension(bool usePoryScript);
+    QString getScriptDefaultString(bool usePoryScript, QString mapName);
+
+    bool loadMapBorder(Map *map);
 
     void saveMapHealEvents(Map *map);
 

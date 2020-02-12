@@ -669,11 +669,14 @@ void Editor::setBorderItemsVisible(bool visible, qreal opacity) {
 void Editor::setCurrentConnectionDirection(QString curDirection) {
     if (!selected_connection_item)
         return;
+    Map *connected_map = project->getMap(selected_connection_item->connection->map_name);
+    if (!connected_map) {
+        return;
+    }
 
     selected_connection_item->connection->direction = curDirection;
 
-    Map *connected_map = project->getMap(selected_connection_item->connection->map_name);
-    QPixmap pixmap = connected_map->renderConnection(*selected_connection_item->connection);
+    QPixmap pixmap = connected_map->renderConnection(*selected_connection_item->connection, map->layout);
     int offset = selected_connection_item->connection->offset.toInt(nullptr, 0);
     selected_connection_item->initialOffset = offset;
     int x = 0, y = 0;
@@ -908,7 +911,7 @@ void Editor::setConnectionsVisibility(bool visible) {
 }
 
 bool Editor::setMap(QString map_name) {
-    if (map_name.isNull()) {
+    if (map_name.isEmpty()) {
         return false;
     }
 
@@ -920,7 +923,9 @@ bool Editor::setMap(QString map_name) {
 
         map = loadedMap;
         selected_events->clear();
-        displayMap();
+        if (!displayMap()) {
+            return false;
+        }
         updateSelectedEvents();
     }
 
@@ -1045,7 +1050,7 @@ void Editor::mouseEvent_collision(QGraphicsSceneMouseEvent *event, CollisionPixm
     }
 }
 
-void Editor::displayMap() {
+bool Editor::displayMap() {
     if (!scene) {
         scene = new QGraphicsScene;
         MapSceneEventFilter *filter = new MapSceneEventFilter();
@@ -1086,6 +1091,7 @@ void Editor::displayMap() {
     if (events_group) {
         events_group->setVisible(false);
     }
+    return true;
 }
 
 void Editor::displayMetatileSelector() {
@@ -1279,7 +1285,11 @@ void Editor::displayMapConnections() {
 
 void Editor::createConnectionItem(MapConnection* connection, bool hide) {
     Map *connected_map = project->getMap(connection->map_name);
-    QPixmap pixmap = connected_map->renderConnection(*connection);
+    if (!connected_map) {
+        return;
+    }
+
+    QPixmap pixmap = connected_map->renderConnection(*connection, map->layout);
     int offset = connection->offset.toInt(nullptr, 0);
     int x = 0, y = 0;
     if (connection->direction == "up") {
@@ -1449,6 +1459,9 @@ void Editor::removeMirroredConnection(MapConnection* connection) {
 void Editor::updateMirroredConnection(MapConnection* connection, QString originalDirection, QString originalMapName, bool isDelete) {
     if (!ui->checkBox_MirrorConnections->isChecked())
         return;
+    Map* otherMap = project->getMap(originalMapName);
+    if (!otherMap)
+        return;
 
     static QMap<QString, QString> oppositeDirections = QMap<QString, QString>({
         {"up", "down"}, {"right", "left"},
@@ -1458,7 +1471,6 @@ void Editor::updateMirroredConnection(MapConnection* connection, QString origina
 
     // Find the matching connection in the connected map.
     MapConnection* mirrorConnection = nullptr;
-    Map* otherMap = project->getMap(originalMapName);
     for (MapConnection* conn : otherMap->connections) {
         if (conn->direction == oppositeDirection && conn->map_name == map->name) {
             mirrorConnection = conn;

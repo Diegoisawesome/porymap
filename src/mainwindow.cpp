@@ -73,6 +73,7 @@ void MainWindow::initWindow() {
 void MainWindow::initExtraShortcuts() {
     new QShortcut(QKeySequence("Ctrl+Shift+Z"), this, SLOT(redo()));
     new QShortcut(QKeySequence("Ctrl+0"), this, SLOT(resetMapViewScale()));
+    new QShortcut(QKeySequence("Ctrl+G"), ui->checkBox_ToggleGrid, SLOT(toggle()));
     ui->actionZoom_In->setShortcuts({QKeySequence("Ctrl++"), QKeySequence("Ctrl+=")});
 }
 
@@ -282,28 +283,32 @@ bool MainWindow::openProject(QString dir) {
     if (!already_open) {
         editor->project = new Project;
         editor->project->set_root(dir);
-        setWindowTitle(editor->project->getProjectTitle());
-        loadDataStructures();
-        populateMapList();
-        success = setMap(getDefaultMap(), true);
+        success = loadDataStructures()
+               && populateMapList()
+               && setMap(getDefaultMap(), true);
     } else {
-        setWindowTitle(editor->project->getProjectTitle());
-        loadDataStructures();
-        populateMapList();
+        success = loadDataStructures() && populateMapList();
     }
 
     if (success) {
+        setWindowTitle(editor->project->getProjectTitle());
         this->statusBar()->showMessage(QString("Opened project %1").arg(nativeDir));
     } else {
         this->statusBar()->showMessage(QString("Failed to open project %1").arg(nativeDir));
+        QMessageBox msgBox(this);
+        QString errorMsg = QString("There was an error opening the project %1. Please see %2 for full error details.\n%3")
+                .arg(dir)
+                .arg(getLogPath())
+                .arg(getMostRecentError());
+        msgBox.critical(nullptr, "Error Opening Project", errorMsg);
+
     }
 
     return success;
 }
 
 bool MainWindow::isProjectOpen() {
-    return (editor && editor != nullptr)
-        && (editor->project && editor->project != nullptr);
+    return editor != nullptr && editor->project != nullptr;
 }
 
 QString MainWindow::getDefaultMap() {
@@ -343,18 +348,20 @@ void MainWindow::on_action_Open_Project_triggered()
     QString dir = getExistingDirectory(recent);
     if (!dir.isEmpty()) {
         porymapConfig.setRecentProject(dir);
-        openProject(dir);
+        if (!openProject(dir)) {
+            this->initWindow();
+        }
     }
 }
 
 bool MainWindow::setMap(QString map_name, bool scrollTreeView) {
     logInfo(QString("Setting map to '%1'").arg(map_name));
-    if (map_name.isNull()) {
+    if (map_name.isEmpty()) {
         return false;
     }
 
     if (!editor->setMap(map_name)) {
-        logError(QString("Failed to set map to '%1'").arg(map_name));
+        logWarn(QString("Failed to set map to '%1'").arg(map_name));
         return false;
     }
 
@@ -387,7 +394,9 @@ bool MainWindow::setMap(QString map_name, bool scrollTreeView) {
 
 void MainWindow::redrawMapScene()
 {
-    editor->displayMap();
+    if (!editor->displayMap())
+        return;
+
     on_tabWidget_currentChanged(ui->tabWidget->currentIndex());
 
     double base = editor->scale_base;
@@ -443,6 +452,12 @@ void MainWindow::openWarpMap(QString map_name, QString warp_num) {
 
     // Open the destination map, and select the target warp event.
     if (!setMap(map_name, true)) {
+        QMessageBox msgBox(this);
+        QString errorMsg = QString("There was an error opening map %1. Please see %2 for full error details.\n%3")
+                .arg(map_name)
+                .arg(getLogPath())
+                .arg(getMostRecentError());
+        msgBox.critical(nullptr, "Error Opening Map", errorMsg);
         return;
     }
 
@@ -607,44 +622,62 @@ void MainWindow::on_checkBox_PhoneService_clicked(bool checked)
     }
 }
 
-void MainWindow::loadDataStructures() {
+bool MainWindow::loadDataStructures() {
     Project *project = editor->project;
-    project->readMapLayouts();
-    project->readRegionMapSections();
-    project->readItemNames();
-    project->readFlagNames();
-    project->readVarNames();
-    project->readMovementTypes();
-    project->readInitialFacingDirections();
-    project->readMapTypes();
-    project->readMapBattleScenes();
-    project->readWeatherNames();
-    project->readCoordEventWeatherNames();
-    project->readSecretBaseIds();
-    project->readFruitTreeIds();
-    project->readBgEventFacingDirections();
-    project->readMetatileBehaviors();
-    project->readTilesetProperties();
-    project->readHealLocations();
-    project->readMiscellaneousConstants();
-    project->readSpeciesIconPaths();
-    project->readWildMonData();
+    bool success = project->readMapLayouts()
+                && project->readRegionMapSections()
+                && project->readItemNames()
+                && project->readFlagNames()
+                && project->readVarNames()
+                && project->readMovementTypes()
+                && project->readInitialFacingDirections()
+                && project->readMapTypes()
+                && project->readMapBattleScenes()
+                && project->readWeatherNames()
+                && project->readCoordEventWeatherNames()
+                && project->readSecretBaseIds()
+                && project->readFruitTreeIds()
+                && project->readBgEventFacingDirections()
+                && project->readMetatileBehaviors()
+                && project->readTilesetProperties()
+                && project->readHealLocations()
+                && project->readMiscellaneousConstants()
+                && project->readSpeciesIconPaths()
+                && project->readWildMonData();
+    if (!success) {
+        return false;
+    }
 
     // set up project ui comboboxes
     QStringList songs = project->getSongNames();
+    ui->comboBox_Song->clear();
     ui->comboBox_Song->addItems(songs);
+    ui->comboBox_Location->clear();
     ui->comboBox_Location->addItems(project->mapSectionValueToName.values());
+
     QMap<QString, QStringList> tilesets = project->getTilesetLabels();
+    if (tilesets.isEmpty()) {
+        return false;
+    }
+    ui->comboBox_PrimaryTileset->clear();
     ui->comboBox_PrimaryTileset->addItems(tilesets.value("primary"));
+    ui->comboBox_SecondaryTileset->clear();
     ui->comboBox_SecondaryTileset->addItems(tilesets.value("secondary"));
+    ui->comboBox_Weather->clear();
     ui->comboBox_Weather->addItems(*project->weatherNames);
+    ui->comboBox_BattleScene->clear();
     ui->comboBox_BattleScene->addItems(*project->mapBattleScenes);
+    ui->comboBox_Type->clear();
     ui->comboBox_Type->addItems(*project->mapTypes);
+    return true;
 }
 
-void MainWindow::populateMapList() {
-    editor->project->readMapGroups();
-    sortMapList();
+bool MainWindow::populateMapList() {
+    bool success = editor->project->readMapGroups();
+    if (success) {
+        sortMapList();
+    }
+    return success;
 }
 
 void MainWindow::sortMapList() {
@@ -1024,7 +1057,15 @@ void MainWindow::on_mapList_activated(const QModelIndex &index)
 {
     QVariant data = index.data(Qt::UserRole);
     if (index.data(MapListUserRoles::TypeRole) == "map_name" && !data.isNull()) {
-        setMap(data.toString());
+        QString mapName = data.toString();
+        if (!setMap(mapName)) {
+            QMessageBox msgBox(this);
+            QString errorMsg = QString("There was an error opening map %1. Please see %2 for full error details.\n%3")
+                    .arg(mapName)
+                    .arg(getLogPath())
+                    .arg(getMostRecentError());
+            msgBox.critical(nullptr, "Error Opening Map", errorMsg);
+        }
     }
 }
 
@@ -1078,7 +1119,7 @@ void MainWindow::redo() {
 
 // Open current map scripts in system default editor for .inc files
 void MainWindow::openInTextEditor() {
-    QString path = QDir::cleanPath("file://" + editor->project->root + QDir::separator() + "data/maps/" + editor->map->name + "/scripts.inc");
+    QString path = QDir::cleanPath("file://" + editor->project->root + QDir::separator() + "data/maps/" + editor->map->name + "/scripts" + editor->project->getScriptFileExtension(projectConfig.getUsePoryScript()));
     QDesktopServices::openUrl(QUrl(path));
 }
 
@@ -1830,20 +1871,21 @@ void MainWindow::on_toolButton_deleteObject_clicked()
             for (DraggablePixmapItem *item : *editor->selected_events) {
                 QString event_group = item->event->get("event_group_type");
                 int index = editor->map->events.value(event_group).indexOf(item->event);
+                // Get the index for the event that should be selected after this event has been deleted.
+                // If it's at the end of the list, select the previous event, otherwise select the next one.
                 if (index != editor->map->events.value(event_group).size() - 1)
                     index++;
                 else
                     index--;
+                Event *event = nullptr;
+                if (index >= 0)
+                    event = editor->map->events.value(event_group).at(index);
                 if (event_group != "heal_event_group") {
-                    if (index >= 0 && index < editor->map->events.value(event_group).size())
-                    {
-                        Event *event = editor->map->events.value(event_group).at(index);
-                        for (QGraphicsItem *child : editor->events_group->childItems()) {
-                            DraggablePixmapItem *event_item = static_cast<DraggablePixmapItem *>(child);
-                            if (event_item->event == event) {
-                                next_selected_event = event_item;
-                                break;
-                            }
+                    for (QGraphicsItem *child : editor->events_group->childItems()) {
+                        DraggablePixmapItem *event_item = static_cast<DraggablePixmapItem *>(child);
+                        if (event_item->event == event) {
+                            next_selected_event = event_item;
+                            break;
                         }
                     }
                     editor->deleteEvent(item->event);
@@ -1963,6 +2005,12 @@ void MainWindow::checkToolButtons() {
 
 void MainWindow::onLoadMapRequested(QString mapName, QString fromMapName) {
     if (!setMap(mapName, true)) {
+        QMessageBox msgBox(this);
+        QString errorMsg = QString("There was an error opening map %1. Please see %2 for full error details.\n%3")
+                .arg(mapName)
+                .arg(getLogPath())
+                .arg(getMostRecentError());
+        msgBox.critical(nullptr, "Error Opening Map", errorMsg);
         return;
     }
     editor->setSelectedConnectionFromMap(fromMapName);
