@@ -296,7 +296,7 @@ bool MainWindow::openProject(QString dir) {
     } else {
         this->statusBar()->showMessage(QString("Failed to open project %1").arg(nativeDir));
         QMessageBox msgBox(this);
-        QString errorMsg = QString("There was an error opening the project %1. Please see %2 for full error details.\n%3")
+        QString errorMsg = QString("There was an error opening the project %1. Please see %2 for full error details.\n\n%3")
                 .arg(dir)
                 .arg(getLogPath())
                 .arg(getMostRecentError());
@@ -453,7 +453,7 @@ void MainWindow::openWarpMap(QString map_name, QString warp_num) {
     // Open the destination map, and select the target warp event.
     if (!setMap(map_name, true)) {
         QMessageBox msgBox(this);
-        QString errorMsg = QString("There was an error opening map %1. Please see %2 for full error details.\n%3")
+        QString errorMsg = QString("There was an error opening map %1. Please see %2 for full error details.\n\n%3")
                 .arg(map_name)
                 .arg(getLogPath())
                 .arg(getMostRecentError());
@@ -1060,7 +1060,7 @@ void MainWindow::on_mapList_activated(const QModelIndex &index)
         QString mapName = data.toString();
         if (!setMap(mapName)) {
             QMessageBox msgBox(this);
-            QString errorMsg = QString("There was an error opening map %1. Please see %2 for full error details.\n%3")
+            QString errorMsg = QString("There was an error opening map %1. Please see %2 for full error details.\n\n%3")
                     .arg(mapName)
                     .arg(getLogPath())
                     .arg(getMostRecentError());
@@ -1501,7 +1501,7 @@ void MainWindow::updateSelectedObjects() {
                 combo->addItem("NONE", "0");
                 combo->addItem("NORMAL", "1");
                 combo->addItem("SEE ALL DIRECTIONS", "3");
-                combo->setToolTip("The trainer type of this event object.\n"
+                combo->setToolTip("The trainer type of this object event.\n"
                                   "If it is not a trainer, use NONE. SEE ALL DIRECTIONS\n"
                                   "should only be used with a sight radius of 1.");
                 combo->setMinimumContentsLength(10);
@@ -2006,7 +2006,7 @@ void MainWindow::checkToolButtons() {
 void MainWindow::onLoadMapRequested(QString mapName, QString fromMapName) {
     if (!setMap(mapName, true)) {
         QMessageBox msgBox(this);
-        QString errorMsg = QString("There was an error opening map %1. Please see %2 for full error details.\n%3")
+        QString errorMsg = QString("There was an error opening map %1. Please see %2 for full error details.\n\n%3")
                 .arg(mapName)
                 .arg(getLogPath())
                 .arg(getMostRecentError());
@@ -2319,8 +2319,18 @@ void MainWindow::on_horizontalSlider_MetatileZoom_valueChanged(int value) {
 void MainWindow::on_actionRegion_Map_Editor_triggered() {
     if (!this->regionMapEditor) {
         this->regionMapEditor = new RegionMapEditor(this, this->editor->project);
-        this->regionMapEditor->loadRegionMapData();
-        this->regionMapEditor->loadCityMaps();
+        bool success = this->regionMapEditor->loadRegionMapData()
+                    && this->regionMapEditor->loadCityMaps();
+        if (!success) {
+            delete this->regionMapEditor;
+            this->regionMapEditor = nullptr;
+            QMessageBox msgBox(this);
+            QString errorMsg = QString("There was an error opening the region map data. Please see %1 for full error details.\n\n%3")
+                    .arg(getLogPath())
+                    .arg(getMostRecentError());
+            msgBox.critical(nullptr, "Error Opening Region Map Editor", errorMsg);
+            return;
+        }
         connect(this->regionMapEditor, &QObject::destroyed, [=](QObject *) { this->regionMapEditor = nullptr; });
         this->regionMapEditor->setAttribute(Qt::WA_DeleteOnClose);
     }

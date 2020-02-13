@@ -1901,7 +1901,7 @@ bool Project::readVarNames() {
 bool Project::readMovementTypes() {
     movementTypes->clear();
     QStringList prefixes = (QStringList() << "MOVEMENT_TYPE_");
-    QString filename = "include/constants/event_object_movement_constants.h";
+    QString filename = "include/constants/event_object_movement.h";
     parser.readCDefinesSorted(filename, prefixes, movementTypes);
     if (movementTypes->isEmpty()) {
         logError(QString("Failed to read movement type constants from %1").arg(filename));
@@ -1995,7 +1995,7 @@ bool Project::readFruitTreeIds() {
 bool Project::readBgEventFacingDirections() {
     bgEventFacingDirections->clear();
     QStringList prefixes = (QStringList() << "BG_EVENT_PLAYER_FACING_");
-    QString filename = "include/constants/bg_event_constants.h";
+    QString filename = "include/constants/event_bg.h";
     parser.readCDefinesSorted(filename, prefixes, bgEventFacingDirections);
     if (bgEventFacingDirections->isEmpty()) {
         logError(QString("Failed to read bg event facing direction constants from %1").arg(filename));
@@ -2033,7 +2033,7 @@ QStringList Project::getSongNames() {
 
 QMap<QString, int> Project::getEventObjGfxConstants() {
     QStringList eventObjGfxPrefixes;
-    eventObjGfxPrefixes << "EVENT_OBJ_GFX_";
+    eventObjGfxPrefixes << "OBJ_EVENT_GFX_";
 
     QMap<QString, int> constants = parser.readCDefines("include/constants/event_objects.h", eventObjGfxPrefixes);
 
@@ -2090,7 +2090,7 @@ void Project::loadEventPixmaps(QList<Event*> objects) {
 
     QMap<QString, int> constants = getEventObjGfxConstants();
 
-    QMap<QString, QString> pointerHash = parser.readNamedIndexCArray("src/data/field_event_obj/event_object_graphics_info_pointers.h", "gEventObjectGraphicsInfoPointers");
+    QMap<QString, QString> pointerHash = parser.readNamedIndexCArray("src/data/object_events/object_event_graphics_info_pointers.h", "gObjectEventGraphicsInfoPointers");
 
     for (Event *object : objects) {
         if (!object->pixmap.isNull()) {
@@ -2115,13 +2115,13 @@ void Project::loadEventPixmaps(QList<Event*> objects) {
 
         if (event_type == EventType::Object) {
             QString info_label = pointerHash[object->get("sprite")].replace("&", "");
-            QStringList gfx_info = parser.readCArray("src/data/field_event_obj/event_object_graphics_info.h", info_label);
+            QStringList gfx_info = parser.readCArray("src/data/object_events/object_event_graphics_info.h", info_label);
             QString pic_label = gfx_info.value(14);
             QString dimensions_label = gfx_info.value(11);
             QString subsprites_label = gfx_info.value(12);
-            QString gfx_label = parser.readCArray("src/data/field_event_obj/event_object_pic_tables.h", pic_label).value(0);
+            QString gfx_label = parser.readCArray("src/data/object_events/object_event_pic_tables.h", pic_label).value(0);
             gfx_label = gfx_label.section(QRegExp("[\\(\\)]"), 1, 1);
-            QString path = parser.readCIncbin("src/data/field_event_obj/event_object_graphics.h", gfx_label);
+            QString path = parser.readCIncbin("src/data/object_events/object_event_graphics.h", gfx_label);
 
             if (!path.isNull()) {
                 path = fixGraphicPath(path);
