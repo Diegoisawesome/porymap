@@ -73,6 +73,7 @@ void MainWindow::initWindow() {
 void MainWindow::initExtraShortcuts() {
     new QShortcut(QKeySequence("Ctrl+Shift+Z"), this, SLOT(redo()));
     new QShortcut(QKeySequence("Ctrl+0"), this, SLOT(resetMapViewScale()));
+    new QShortcut(QKeySequence("Ctrl+G"), ui->checkBox_ToggleGrid, SLOT(toggle()));
     ui->actionZoom_In->setShortcuts({QKeySequence("Ctrl++"), QKeySequence("Ctrl+=")});
 }
 
@@ -280,28 +281,32 @@ bool MainWindow::openProject(QString dir) {
     if (!already_open) {
         editor->project = new Project;
         editor->project->set_root(dir);
-        setWindowTitle(editor->project->getProjectTitle());
-        loadDataStructures();
-        populateMapList();
-        success = setMap(getDefaultMap(), true);
+        success = loadDataStructures()
+               && populateMapList()
+               && setMap(getDefaultMap(), true);
     } else {
-        setWindowTitle(editor->project->getProjectTitle());
-        loadDataStructures();
-        populateMapList();
+        success = loadDataStructures() && populateMapList();
     }
 
     if (success) {
+        setWindowTitle(editor->project->getProjectTitle());
         this->statusBar()->showMessage(QString("Opened project %1").arg(nativeDir));
     } else {
         this->statusBar()->showMessage(QString("Failed to open project %1").arg(nativeDir));
+        QMessageBox msgBox(this);
+        QString errorMsg = QString("There was an error opening the project %1. Please see %2 for full error details.\n\n%3")
+                .arg(dir)
+                .arg(getLogPath())
+                .arg(getMostRecentError());
+        msgBox.critical(nullptr, "Error Opening Project", errorMsg);
+
     }
 
     return success;
 }
 
 bool MainWindow::isProjectOpen() {
-    return (editor && editor != nullptr)
-        && (editor->project && editor->project != nullptr);
+    return editor != nullptr && editor->project != nullptr;
 }
 
 QString MainWindow::getDefaultMap() {
@@ -341,18 +346,20 @@ void MainWindow::on_action_Open_Project_triggered()
     QString dir = getExistingDirectory(recent);
     if (!dir.isEmpty()) {
         porymapConfig.setRecentProject(dir);
-        openProject(dir);
+        if (!openProject(dir)) {
+            this->initWindow();
+        }
     }
 }
 
 bool MainWindow::setMap(QString map_name, bool scrollTreeView) {
     logInfo(QString("Setting map to '%1'").arg(map_name));
-    if (map_name.isNull()) {
+    if (map_name.isEmpty()) {
         return false;
     }
 
     if (!editor->setMap(map_name)) {
-        logError(QString("Failed to set map to '%1'").arg(map_name));
+        logWarn(QString("Failed to set map to '%1'").arg(map_name));
         return false;
     }
 
@@ -385,7 +392,9 @@ bool MainWindow::setMap(QString map_name, bool scrollTreeView) {
 
 void MainWindow::redrawMapScene()
 {
-    editor->displayMap();
+    if (!editor->displayMap())
+        return;
+
     on_tabWidget_currentChanged(ui->tabWidget->currentIndex());
 
     double base = editor->scale_base;
@@ -441,6 +450,12 @@ void MainWindow::openWarpMap(QString map_name, QString warp_num) {
 
     // Open the destination map, and select the target warp event.
     if (!setMap(map_name, true)) {
+        QMessageBox msgBox(this);
+        QString errorMsg = QString("There was an error opening map %1. Please see %2 for full error details.\n\n%3")
+                .arg(map_name)
+                .arg(getLogPath())
+                .arg(getMostRecentError());
+        msgBox.critical(nullptr, "Error Opening Map", errorMsg);
         return;
     }
 
@@ -592,43 +607,61 @@ void MainWindow::on_checkBox_AllowEscapeRope_clicked(bool checked)
     }
 }
 
-void MainWindow::loadDataStructures() {
+bool MainWindow::loadDataStructures() {
     Project *project = editor->project;
-    project->readMapLayouts();
-    project->readRegionMapSections();
-    project->readItemNames();
-    project->readFlagNames();
-    project->readVarNames();
-    project->readMovementTypes();
-    project->readInitialFacingDirections();
-    project->readMapTypes();
-    project->readMapBattleScenes();
-    project->readWeatherNames();
-    project->readCoordEventWeatherNames();
-    project->readSecretBaseIds();
-    project->readBgEventFacingDirections();
-    project->readMetatileBehaviors();
-    project->readTilesetProperties();
-    project->readHealLocations();
-    project->readMiscellaneousConstants();
-    project->readSpeciesIconPaths();
-    project->readWildMonData();
+    bool success = project->readMapLayouts()
+                && project->readRegionMapSections()
+                && project->readItemNames()
+                && project->readFlagNames()
+                && project->readVarNames()
+                && project->readMovementTypes()
+                && project->readInitialFacingDirections()
+                && project->readMapTypes()
+                && project->readMapBattleScenes()
+                && project->readWeatherNames()
+                && project->readCoordEventWeatherNames()
+                && project->readSecretBaseIds()
+                && project->readBgEventFacingDirections()
+                && project->readMetatileBehaviors()
+                && project->readTilesetProperties()
+                && project->readHealLocations()
+                && project->readMiscellaneousConstants()
+                && project->readSpeciesIconPaths()
+                && project->readWildMonData();
+    if (!success) {
+        return false;
+    }
 
     // set up project ui comboboxes
     QStringList songs = project->getSongNames();
+    ui->comboBox_Song->clear();
     ui->comboBox_Song->addItems(songs);
+    ui->comboBox_Location->clear();
     ui->comboBox_Location->addItems(project->mapSectionValueToName.values());
+
     QMap<QString, QStringList> tilesets = project->getTilesetLabels();
+    if (tilesets.isEmpty()) {
+        return false;
+    }
+    ui->comboBox_PrimaryTileset->clear();
     ui->comboBox_PrimaryTileset->addItems(tilesets.value("primary"));
+    ui->comboBox_SecondaryTileset->clear();
     ui->comboBox_SecondaryTileset->addItems(tilesets.value("secondary"));
+    ui->comboBox_Weather->clear();
     ui->comboBox_Weather->addItems(*project->weatherNames);
+    ui->comboBox_BattleScene->clear();
     ui->comboBox_BattleScene->addItems(*project->mapBattleScenes);
+    ui->comboBox_Type->clear();
     ui->comboBox_Type->addItems(*project->mapTypes);
+    return true;
 }
 
-void MainWindow::populateMapList() {
-    editor->project->readMapGroups();
-    sortMapList();
+bool MainWindow::populateMapList() {
+    bool success = editor->project->readMapGroups();
+    if (success) {
+        sortMapList();
+    }
+    return success;
 }
 
 void MainWindow::sortMapList() {
@@ -1008,7 +1041,15 @@ void MainWindow::on_mapList_activated(const QModelIndex &index)
 {
     QVariant data = index.data(Qt::UserRole);
     if (index.data(MapListUserRoles::TypeRole) == "map_name" && !data.isNull()) {
-        setMap(data.toString());
+        QString mapName = data.toString();
+        if (!setMap(mapName)) {
+            QMessageBox msgBox(this);
+            QString errorMsg = QString("There was an error opening map %1. Please see %2 for full error details.\n\n%3")
+                    .arg(mapName)
+                    .arg(getLogPath())
+                    .arg(getMostRecentError());
+            msgBox.critical(nullptr, "Error Opening Map", errorMsg);
+        }
     }
 }
 
@@ -1430,7 +1471,7 @@ void MainWindow::updateSelectedObjects() {
                 combo->addItem("NONE", "0");
                 combo->addItem("NORMAL", "1");
                 combo->addItem("SEE ALL DIRECTIONS", "3");
-                combo->setToolTip("The trainer type of this event object.\n"
+                combo->setToolTip("The trainer type of this object event.\n"
                                   "If it is not a trainer, use NONE. SEE ALL DIRECTIONS\n"
                                   "should only be used with a sight radius of 1.");
                 combo->setMinimumContentsLength(10);
@@ -1919,6 +1960,12 @@ void MainWindow::checkToolButtons() {
 
 void MainWindow::onLoadMapRequested(QString mapName, QString fromMapName) {
     if (!setMap(mapName, true)) {
+        QMessageBox msgBox(this);
+        QString errorMsg = QString("There was an error opening map %1. Please see %2 for full error details.\n\n%3")
+                .arg(mapName)
+                .arg(getLogPath())
+                .arg(getMostRecentError());
+        msgBox.critical(nullptr, "Error Opening Map", errorMsg);
         return;
     }
     editor->setSelectedConnectionFromMap(fromMapName);
@@ -2227,8 +2274,18 @@ void MainWindow::on_horizontalSlider_MetatileZoom_valueChanged(int value) {
 void MainWindow::on_actionRegion_Map_Editor_triggered() {
     if (!this->regionMapEditor) {
         this->regionMapEditor = new RegionMapEditor(this, this->editor->project);
-        this->regionMapEditor->loadRegionMapData();
-        this->regionMapEditor->loadCityMaps();
+        bool success = this->regionMapEditor->loadRegionMapData()
+                    && this->regionMapEditor->loadCityMaps();
+        if (!success) {
+            delete this->regionMapEditor;
+            this->regionMapEditor = nullptr;
+            QMessageBox msgBox(this);
+            QString errorMsg = QString("There was an error opening the region map data. Please see %1 for full error details.\n\n%3")
+                    .arg(getLogPath())
+                    .arg(getMostRecentError());
+            msgBox.critical(nullptr, "Error Opening Region Map Editor", errorMsg);
+            return;
+        }
         connect(this->regionMapEditor, &QObject::destroyed, [=](QObject *) { this->regionMapEditor = nullptr; });
         this->regionMapEditor->setAttribute(Qt::WA_DeleteOnClose);
     }
