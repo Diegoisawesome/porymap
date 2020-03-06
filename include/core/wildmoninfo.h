@@ -12,7 +12,7 @@ struct WildPokemon {
 struct WildMonInfo {
     bool active = false;
     int encounterRate = 0;
-    QVector<WildPokemon> wildPokemon;
+    QVector<QVector<WildPokemon>> wildPokemon;
 };
 
 struct WildPokemonHeader {
@@ -28,6 +28,6 @@ struct EncounterField {
 typedef QVector<EncounterField> EncounterFields;
 
 WildMonInfo getDefaultMonInfo(EncounterField field);
-WildMonInfo copyMonInfoFromTab(QTableWidget *table, EncounterField monField);
+WildMonInfo copyMonInfoFromTab(QTableWidget *table, EncounterField monField, QVector<QVector<WildPokemon>> mons, int timeOfDay);
 
 #endif // GUARD_WILDMONINFO_H

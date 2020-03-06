@@ -622,6 +622,14 @@ void MainWindow::on_checkBox_PhoneService_clicked(bool checked)
     }
 }
 
+void MainWindow::on_comboBox_WildMonTimeOfDay_currentIndexChanged(int index)
+{
+    if (editor && editor->map) {
+        editor->current_time_index = index;
+        editor->displayWildMonTables();
+    }
+}
+
 bool MainWindow::loadDataStructures() {
     Project *project = editor->project;
     bool success = project->readMapLayouts()
@@ -637,6 +645,7 @@ bool MainWindow::loadDataStructures() {
                 && project->readCoordEventWeatherNames()
                 && project->readSecretBaseIds()
                 && project->readFruitTreeIds()
+                && project->readTimesOfDay()
                 && project->readBgEventFacingDirections()
                 && project->readMetatileBehaviors()
                 && project->readTilesetProperties()
@@ -669,6 +678,8 @@ bool MainWindow::loadDataStructures() {
     ui->comboBox_BattleScene->addItems(*project->mapBattleScenes);
     ui->comboBox_Type->clear();
     ui->comboBox_Type->addItems(*project->mapTypes);
+    ui->comboBox_WildMonTimeOfDay->clear();
+    ui->comboBox_WildMonTimeOfDay->addItems(*project->timesOfDay);
     return true;
 }
 

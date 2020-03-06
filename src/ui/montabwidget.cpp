@@ -44,7 +44,7 @@ void MonTabWidget::askActivateTab(int tabIndex, QPoint menuPos) {
     QAction actionActivateTab(QString("Add %1 data for this map...").arg(tabText), this);
     connect(&actionActivateTab, &QAction::triggered, [=](){
         clearTableAt(tabIndex);
-        populateTab(tabIndex, getDefaultMonInfo(editor->project->wildMonFields.at(tabIndex)), tabText);
+        populateTab(tabIndex, editor->current_time_index, getDefaultMonInfo(editor->project->wildMonFields.at(tabIndex)), tabText);
         editor->saveEncounterTabData();
         setCurrentIndex(tabIndex);
     });
@@ -60,7 +60,7 @@ void MonTabWidget::clearTableAt(int tabIndex) {
     }
 }
 
-void MonTabWidget::populateTab(int tabIndex, WildMonInfo monInfo, QString fieldName) {
+void MonTabWidget::populateTab(int tabIndex, int timeOfDay, WildMonInfo monInfo, QString fieldName) {
     QTableWidget *speciesTable = tableAt(tabIndex);
 
     int fieldIndex = 0;
@@ -71,7 +71,7 @@ void MonTabWidget::populateTab(int tabIndex, WildMonInfo monInfo, QString fieldN
     bool insertGroupLabel = false;
     if (!editor->project->wildMonFields[fieldIndex].groups.isEmpty()) insertGroupLabel = true;
 
-    speciesTable->setRowCount(monInfo.wildPokemon.size());
+    speciesTable->setRowCount(monInfo.wildPokemon[timeOfDay].size());
     speciesTable->setColumnCount(insertGroupLabel ? 8 : 7);
 
     QStringList landMonTableHeaders;
@@ -102,9 +102,10 @@ void MonTabWidget::populateTab(int tabIndex, WildMonInfo monInfo, QString fieldN
     speciesTable->setCellWidget(0, insertGroupLabel? 7 : 6, encounterFrame);
 
     int i = 0;
-    for (WildPokemon mon : monInfo.wildPokemon) {
+    for (WildPokemon mon : monInfo.wildPokemon[timeOfDay]) {
         createSpeciesTableRow(speciesTable, mon, i++, fieldName);
     }
+
     this->setTabActive(tabIndex, true);
 }
 

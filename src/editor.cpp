@@ -194,7 +194,7 @@ void Editor::displayWildMonTables() {
             tabWidget->clearTableAt(tabIndex);
 
             if (project->wildMonData.contains(map->constantName) && header.wildMons[fieldName].active) {
-                tabWidget->populateTab(tabIndex, header.wildMons[fieldName], fieldName);
+                tabWidget->populateTab(tabIndex, current_time_index, header.wildMons[fieldName], fieldName);
             } else {
                 tabWidget->setTabActive(tabIndex, false);
             }
@@ -301,13 +301,13 @@ void Editor::addNewWildMonGroup(QWidget *window) {
                 if (copyCheckbox->isChecked()) {
                     MonTabWidget *copyFrom = static_cast<MonTabWidget *>(stack->widget(stackIndex));
                     if (copyFrom->isTabEnabled(tabIndex))
-                        header.wildMons.insert(fieldName, copyMonInfoFromTab(copyFrom->tableAt(tabIndex), monField));
+                        header.wildMons.insert(fieldName, copyMonInfoFromTab(copyFrom->tableAt(tabIndex), monField, header.wildMons[fieldName].wildPokemon, current_time_index));
                     else
                         header.wildMons.insert(fieldName, getDefaultMonInfo(monField));
                 } else {
                     header.wildMons.insert(fieldName, getDefaultMonInfo(monField));
                 }
-                tabWidget->populateTab(tabIndex, header.wildMons[fieldName], fieldName);
+                tabWidget->populateTab(tabIndex, current_time_index, header.wildMons[fieldName], fieldName);
             } else {
                 tabWidget->setTabActive(tabIndex, false);
             }
@@ -570,7 +570,7 @@ void Editor::saveEncounterTabData() {
 
             QTableWidget *monTable = static_cast<QTableWidget *>(tabWidget->widget(fieldIndex - 1));
             QVector<WildPokemon> newWildMons;
-            encounterHeader.wildMons[fieldName] = copyMonInfoFromTab(monTable, monField);
+            encounterHeader.wildMons[fieldName] = copyMonInfoFromTab(monTable, monField, encounterHeader.wildMons[fieldName].wildPokemon, current_time_index);
         }
     }
 }

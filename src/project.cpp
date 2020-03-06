@@ -42,6 +42,7 @@ Project::Project()
     coordEventWeatherNames = new QStringList;
     secretBaseIds = new QStringList;
     fruitTreeIds = new QStringList;
+    timesOfDay = new QStringList;
     bgEventFacingDirections = new QStringList;
     map_cache = new QMap<QString, Map*>;
     mapConstantsToMapNames = new QMap<QString, QString>;
@@ -680,15 +681,20 @@ void Project::saveWildMonData() {
                 QJsonObject fieldObject;
                 WildMonInfo monInfo = encounterHeader.wildMons.value(fieldName);
                 fieldObject["encounter_rate"] = monInfo.encounterRate;
-                QJsonArray monArray;
-                for (WildPokemon wildMon : monInfo.wildPokemon) {
-                    QJsonObject monEntry;
-                    monEntry["min_level"] = wildMon.minLevel;
-                    monEntry["max_level"] = wildMon.maxLevel;
-                    monEntry["species"] = wildMon.species;
-                    monArray.append(monEntry);
+                QJsonArray timeArray;
+                for (QVector<WildPokemon>& time : monInfo.wildPokemon)
+                {
+                    QJsonArray monArray;
+                    for (WildPokemon wildMon : time) {
+                        QJsonObject monEntry;
+                        monEntry["min_level"] = wildMon.minLevel;
+                        monEntry["max_level"] = wildMon.maxLevel;
+                        monEntry["species"] = wildMon.species;
+                        monArray.append(monEntry);
+                    }
+                    timeArray.append(monArray);
                 }
-                fieldObject["mons"] = monArray;
+                fieldObject["mons"] = timeArray;
                 encounterObject[fieldName] = fieldObject;
             }
             encountersArray.append(encounterObject);
@@ -702,7 +708,14 @@ void Project::saveWildMonData() {
         wildEncounterGroups.append(extraEncounterGroups[label]);
     }
 
+    QJsonArray timesOfDayJson = QJsonArray();
+    for (QString time : *timesOfDay)
+    {
+        timesOfDayJson.append(time.mid(5));
+    }
+
     wildEncountersObject["wild_encounter_groups"] = wildEncounterGroups;
+    wildEncountersObject["times"] = timesOfDayJson;
     QJsonDocument wildEncountersDoc(wildEncountersObject);
     wildEncountersFile.write(wildEncountersDoc.toJson());
     wildEncountersFile.close();
@@ -1578,12 +1591,19 @@ bool Project::readWildMonData() {
                 if (encounter.toObject().value(field) != QJsonValue::Undefined) {
                     header.wildMons[field].active = true;
                     header.wildMons[field].encounterRate = encounter.toObject().value(field).toObject().value("encounter_rate").toInt();
-                    for (QJsonValue mon : encounter.toObject().value(field).toObject().value("mons").toArray()) {
-                        WildPokemon newMon;
-                        newMon.minLevel = mon.toObject().value("min_level").toInt();
-                        newMon.maxLevel = mon.toObject().value("max_level").toInt();
-                        newMon.species = mon.toObject().value("species").toString();
-                        header.wildMons[field].wildPokemon.append(newMon);
+                    QJsonValue times = encounter.toObject().value(field).toObject().value("mons");
+                    header.wildMons[field].wildPokemon = QVector<QVector<WildPokemon>>();
+                    for (QJsonValue time : times.toArray()) {
+                        QVector<WildPokemon> timePokemonList;
+                        for (QJsonValue mon : time.toArray())
+                        {
+                            WildPokemon newMon;
+                            newMon.minLevel = mon.toObject().value("min_level").toInt();
+                            newMon.maxLevel = mon.toObject().value("max_level").toInt();
+                            newMon.species = mon.toObject().value("species").toString();
+                            timePokemonList.append(newMon);
+                        }
+                        header.wildMons[field].wildPokemon.append(timePokemonList);
                     }
                 }
             }
@@ -1983,10 +2003,22 @@ bool Project::readSecretBaseIds() {
 bool Project::readFruitTreeIds() {
     fruitTreeIds->clear();
     QStringList prefixes = (QStringList() << "FRUIT_TREE_");
-    QString filename = "/include/constants/fruit_trees.h";
+    QString filename = "include/constants/fruit_trees.h";
     parser.readCDefinesSorted(filename, prefixes, fruitTreeIds);
     if (fruitTreeIds->isEmpty()) {
         logError(QString("Failed to read fruit tree id constants from %1").arg(filename));
+        return false;
+    }
+    return true;
+}
+
+bool Project::readTimesOfDay() {
+    timesOfDay->clear();
+    QStringList prefixes = (QStringList() << "TIME_");
+    QString filename = "include/constants/day_night.h";
+    parser.readCDefinesSorted(filename, prefixes, timesOfDay);
+    if (timesOfDay->isEmpty()) {
+        logError(QString("Failed to read times of day constants from %1").arg(filename));
         return false;
     }
     return true;
