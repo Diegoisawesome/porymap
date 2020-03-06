@@ -44,7 +44,7 @@ void MonTabWidget::askActivateTab(int tabIndex, QPoint menuPos) {
     QAction actionActivateTab(QString("Add %1 data for this map...").arg(tabText), this);
     connect(&actionActivateTab, &QAction::triggered, [=](){
         clearTableAt(tabIndex);
-        populateTab(tabIndex, editor->current_time_index, getDefaultMonInfo(editor->project->wildMonFields.at(tabIndex)), tabText);
+        populateTab(tabIndex, editor->current_time_index, getDefaultMonInfo(editor->project->wildMonFields.at(tabIndex), editor->project->timesOfDay->count()), tabText);
         editor->saveEncounterTabData();
         setCurrentIndex(tabIndex);
     });

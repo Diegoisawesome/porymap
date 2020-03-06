@@ -3,18 +3,20 @@
 
 
 
-WildMonInfo getDefaultMonInfo(EncounterField field) {
+WildMonInfo getDefaultMonInfo(EncounterField field, int timesCount) {
     WildMonInfo newInfo;
     newInfo.active = true;
     newInfo.encounterRate = 0;
 
-    int size = field.encounterRates.size();
-    while (size--)
+    while (timesCount--)
     {
-        for (QVector<WildPokemon>& timeMons : newInfo.wildPokemon)
+        QVector<WildPokemon> timeMons;
+        int size = field.encounterRates.size();
+        while (size--)
         {
             timeMons.append(WildPokemon());
         }
+        newInfo.wildPokemon.append(timeMons);
     }
 
     return newInfo;

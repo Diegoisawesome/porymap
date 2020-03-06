@@ -160,6 +160,13 @@ void Editor::setEditingConnections() {
 void Editor::displayWildMonTables() {
     QStackedWidget *stack = ui->stackedWidget_WildMons;
     QComboBox *labelCombo = ui->comboBox_EncounterGroupLabel;
+    MonTabWidget *currentEncounterTab = qobject_cast<MonTabWidget *>(stack->currentWidget());
+    int encounterIndex = -1;
+
+    if (currentEncounterTab != nullptr)
+    {
+        encounterIndex = currentEncounterTab->currentIndex();
+    }
 
     // delete widgets from previous map data if they exist
     while (stack->count()) {
@@ -202,6 +209,12 @@ void Editor::displayWildMonTables() {
         }
     }
     stack->setCurrentIndex(0);
+    currentEncounterTab = static_cast<MonTabWidget *>(stack->currentWidget());
+
+    if (currentEncounterTab != nullptr && encounterIndex >= 0 && currentEncounterTab->isTabEnabled(encounterIndex))
+    {
+        static_cast<MonTabWidget *>(stack->currentWidget())->setCurrentIndex(encounterIndex);
+    }
 }
 
 void Editor::addNewWildMonGroup(QWidget *window) {
@@ -280,12 +293,7 @@ void Editor::addNewWildMonGroup(QWidget *window) {
     form.addRow(&buttonBox);
 
     if (dialog.exec() == QDialog::Accepted) {
-        WildPokemonHeader header;
-        for (EncounterField& monField : project->wildMonFields) {
-            QString fieldName = monField.name;
-            header.wildMons[fieldName].active = false;
-            header.wildMons[fieldName].encounterRate = 0;
-        }
+        WildPokemonHeader &header = project->wildMonData[map->constantName][lineEdit->text()];
 
         MonTabWidget *tabWidget = new MonTabWidget(this);
         stack->insertWidget(stack->count(), tabWidget);
@@ -298,14 +306,16 @@ void Editor::addNewWildMonGroup(QWidget *window) {
             QString fieldName = monField.name;
             tabWidget->clearTableAt(tabIndex);
             if (fieldCheckboxes[tabIndex]->isChecked()) {
+                header.wildMons[fieldName].active = false;
+                header.wildMons[fieldName].encounterRate = 0;
                 if (copyCheckbox->isChecked()) {
                     MonTabWidget *copyFrom = static_cast<MonTabWidget *>(stack->widget(stackIndex));
                     if (copyFrom->isTabEnabled(tabIndex))
                         header.wildMons.insert(fieldName, copyMonInfoFromTab(copyFrom->tableAt(tabIndex), monField, header.wildMons[fieldName].wildPokemon, current_time_index));
                     else
-                        header.wildMons.insert(fieldName, getDefaultMonInfo(monField));
+                        header.wildMons.insert(fieldName, getDefaultMonInfo(monField, project->timesOfDay->count()));
                 } else {
-                    header.wildMons.insert(fieldName, getDefaultMonInfo(monField));
+                    header.wildMons.insert(fieldName, getDefaultMonInfo(monField, project->timesOfDay->count()));
                 }
                 tabWidget->populateTab(tabIndex, current_time_index, header.wildMons[fieldName], fieldName);
             } else {
@@ -364,7 +374,7 @@ void Editor::configureEncounterJSON(QWidget *window) {
         totalLabel->setText(groupTotalMessage);
     };
 
-    // lambda: Create a new "slot", which is the widget containing a spinner and an index label. 
+    // lambda: Create a new "slot", which is the widget containing a spinner and an index label.
     //         Add the slot to a list of fieldSlots, which exists to keep track of them for memory management.
     auto createNewSlot = [&fieldSlots, &tempFields, &updateTotal](int index, EncounterField &currentField) {
         QLabel *indexLabel = new QLabel(QString("Index: %1").arg(QString::number(index)));
