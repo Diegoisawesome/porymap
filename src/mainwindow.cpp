@@ -161,18 +161,22 @@ void MainWindow::setProjectSpecificUIVisibility()
         ui->checkBox_AllowBiking->setVisible(false);
         ui->checkBox_AllowEscapeRope->setVisible(false);
         ui->checkBox_PhoneService->setVisible(false);
+        ui->spinBox_FloorNumber->setVisible(false);
         ui->label_AllowRunning->setVisible(false);
         ui->label_AllowBiking->setVisible(false);
         ui->label_AllowEscapeRope->setVisible(false);
+        ui->label_FloorNumber->setVisible(false);
         break;
     case BaseGameVersion::pokeemerald:
         ui->checkBox_AllowRunning->setVisible(true);
         ui->checkBox_AllowBiking->setVisible(true);
         ui->checkBox_AllowEscapeRope->setVisible(true);
         ui->checkBox_PhoneService->setVisible(true);
+        ui->spinBox_FloorNumber->setVisible(true);
         ui->label_AllowRunning->setVisible(true);
         ui->label_AllowBiking->setVisible(true);
         ui->label_AllowEscapeRope->setVisible(true);
+        ui->label_FloorNumber->setVisible(true);
         break;
     case BaseGameVersion::pokefirered:
         break;
@@ -508,6 +512,7 @@ void MainWindow::displayMapProperties() {
     ui->checkBox_AllowBiking->setChecked(map->allowBiking.toInt() > 0 || map->allowBiking == "TRUE");
     ui->checkBox_AllowEscapeRope->setChecked(map->allowEscapeRope.toInt() > 0 || map->allowEscapeRope == "TRUE");
     ui->checkBox_PhoneService->setChecked(map->phoneService.toInt() > 0 || map->phoneService == "TRUE");
+    ui->spinBox_FloorNumber->setValue(map->floorNumber);
 
     // Custom fields table.
     ui->tableWidget_CustomHeaderFields->blockSignals(true);
@@ -621,6 +626,14 @@ void MainWindow::on_checkBox_PhoneService_clicked(bool checked)
         }
     }
 }
+
+void MainWindow::on_spinBox_FloorNumber_valueChanged(int offset)
+{
+    if (editor && editor->map) {
+        editor->map->floorNumber = offset;
+    }
+}
+
 
 void MainWindow::on_comboBox_WildMonTimeOfDay_currentIndexChanged(int index)
 {

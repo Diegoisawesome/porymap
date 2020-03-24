@@ -69,6 +69,7 @@ private slots:
     void on_checkBox_AllowBiking_clicked(bool checked);
     void on_checkBox_AllowEscapeRope_clicked(bool checked);
     void on_checkBox_PhoneService_clicked(bool checked);
+    void on_spinBox_FloorNumber_valueChanged(int offset);
 
     void on_tabWidget_currentChanged(int index);
 

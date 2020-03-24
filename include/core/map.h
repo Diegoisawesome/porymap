@@ -43,6 +43,7 @@ public:
     QString allowBiking;
     QString allowEscapeRope;
     QString phoneService;
+    int floorNumber;
     QString battle_scene;
     QString sharedEventsMap = "";
     QString sharedScriptsMap = "";

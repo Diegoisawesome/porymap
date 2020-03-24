@@ -107,6 +107,7 @@ QMap<QString, bool> Project::getTopLevelMapFields() {
             {"allow_escape_rope", true},
             {"allow_running", true},
             {"phone_service", true},
+            {"floor_number", true},
             {"show_map_name", true},
             {"battle_scene", true},
             {"connections", true},
@@ -172,6 +173,7 @@ bool Project::loadMapData(Map* map) {
         map->allowEscapeRope = QString::number(mapObj["allow_escape_rope"].toBool());
         map->allowRunning = QString::number(mapObj["allow_running"].toBool());
         map->phoneService = QString::number(mapObj["phone_service"].toBool());
+        map->floorNumber = mapObj["floor_number"].toInt();
     }
     map->sharedEventsMap = mapObj["shared_events_map"].toString();
     map->sharedScriptsMap = mapObj["shared_scripts_map"].toString();
@@ -528,7 +530,7 @@ bool Project::readMapLayouts() {
             layout->border_width = QString::number(bwidth);
             int bheight = layoutObj["border_height"].toInt();
             if (bheight <= 0) {
-                logWarn(QString("Invalid layout 'border_height value '%1' on layout %2 in %3. Must be greater than 0. Using default (%4) instead.").arg(bheight).arg(i).arg(layoutsFilepath).arg(DEFAULT_BORDER_HEIGHT));
+                logWarn(QString("Invalid layout 'border_height' value '%1' on layout %2 in %3. Must be greater than 0. Using default (%4) instead.").arg(bheight).arg(i).arg(layoutsFilepath).arg(DEFAULT_BORDER_HEIGHT));
                 bheight = DEFAULT_BORDER_HEIGHT;
             }
             layout->border_height = QString::number(bheight);
@@ -1217,6 +1219,7 @@ void Project::saveMap(Map *map) {
     mapObj["allow_running"] = map->allowRunning.toInt() > 0 || map->allowRunning == "TRUE";
     mapObj["phone_service"] = map->phoneService.toInt() > 0 || map->phoneService == "TRUE";
     mapObj["show_map_name"] = map->show_location.toInt() > 0 || map->show_location == "TRUE";
+    mapObj["floor_number"] = map->floorNumber;
     mapObj["battle_scene"] = map->battle_scene;
 
     // Connections
