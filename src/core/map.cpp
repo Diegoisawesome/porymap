@@ -2,6 +2,7 @@
 #include "historyitem.h"
 #include "map.h"
 #include "imageproviders.h"
+#include "scripting.h"
 
 #include <QTime>
 #include <QPainter>
@@ -67,7 +68,7 @@ int Map::getBorderHeight() {
     return layout->border_height.toInt(nullptr, 0);
 }
 
-bool Map::mapBlockChanged(int i, Blockdata *cache) {
+bool Map::mapBlockChanged(int i, Blockdata * cache) {
     if (!cache)
         return true;
     if (!layout->blockdata)
@@ -220,7 +221,7 @@ QPixmap Map::render(bool ignoreCache = false, MapLayout * fromLayout) {
     return pixmap;
 }
 
-QPixmap Map::renderBorder() {
+QPixmap Map::renderBorder(bool ignoreCache) {
     bool changed_any = false, border_resized = false;
     int width_ = getBorderWidth();
     int height_ = getBorderHeight();
@@ -238,7 +239,7 @@ QPixmap Map::renderBorder() {
     }
     QPainter painter(&layout->border_image);
     for (int i = 0; i < layout->border->blocks->length(); i++) {
-        if (!border_resized && !borderBlockChanged(i, layout->cached_border)) {
+        if (!ignoreCache && (!border_resized && !borderBlockChanged(i, layout->cached_border))) {
             continue;
         }
 
@@ -263,23 +264,23 @@ QPixmap Map::renderConnection(MapConnection connection, MapLayout * fromLayout) 
     int x, y, w, h;
     if (connection.direction == "up") {
         x = 0;
-        y = getHeight() - (getBorderHeight() * NUM_BORDER_BLOCKS);
+        y = getHeight() - BORDER_DISTANCE;
         w = getWidth();
-        h = getBorderHeight() * NUM_BORDER_BLOCKS;
+        h = BORDER_DISTANCE;
     } else if (connection.direction == "down") {
         x = 0;
         y = 0;
         w = getWidth();
-        h = getBorderHeight() * NUM_BORDER_BLOCKS;
+        h = BORDER_DISTANCE;
     } else if (connection.direction == "left") {
-        x = getWidth() - (getBorderWidth() * NUM_BORDER_BLOCKS);
+        x = getWidth() - BORDER_DISTANCE;
         y = 0;
-        w = getBorderWidth() * NUM_BORDER_BLOCKS;
+        w = BORDER_DISTANCE;
         h = getHeight();
     } else if (connection.direction == "right") {
         x = 0;
         y = 0;
-        w = getBorderWidth() * NUM_BORDER_BLOCKS;
+        w = BORDER_DISTANCE;
         h = getHeight();
     } else {
         // this should not happen
@@ -363,10 +364,14 @@ Block* Map::getBlock(int x, int y) {
     return nullptr;
 }
 
-void Map::_setBlock(int x, int y, Block block) {
+void Map::setBlock(int x, int y, Block block, bool enableScriptCallback) {
     int i = y * getWidth() + x;
-    if (layout->blockdata && layout->blockdata->blocks) {
+    if (layout->blockdata && layout->blockdata->blocks && i < layout->blockdata->blocks->size()) {
+        Block prevBlock = layout->blockdata->blocks->value(i);
         layout->blockdata->blocks->replace(i, block);
+        if (enableScriptCallback) {
+            Scripting::cb_MetatileChanged(x, y, prevBlock, block);
+        }
     }
 }
 
@@ -390,7 +395,7 @@ void Map::_floodFillCollisionElevation(int x, int y, uint16_t collision, uint16_
 
             block->collision = collision;
             block->elevation = elevation;
-            _setBlock(x, y, *block);
+            setBlock(x, y, *block, true);
             if ((block = getBlock(x + 1, y)) && block->collision == old_coll && block->elevation == old_elev) {
                 todo.append(QPoint(x + 1, y));
             }
@@ -496,14 +501,6 @@ void Map::commit() {
     }
 }
 
-void Map::setBlock(int x, int y, Block block) {
-    Block *old_block = getBlock(x, y);
-    if (old_block && (*old_block) != block) {
-        _setBlock(x, y, block);
-        commit();
-    }
-}
-
 void Map::floodFillCollisionElevation(int x, int y, uint16_t collision, uint16_t elevation) {
     Block *block = getBlock(x, y);
     if (block && (block->collision != collision || block->elevation != elevation)) {
@@ -524,7 +521,7 @@ void Map::magicFillCollisionElevation(int initialX, int initialY, uint16_t colli
                 if (block && block->collision == old_coll && block->elevation == old_elev) {
                     block->collision = collision;
                     block->elevation = elevation;
-                    _setBlock(x, y, *block);
+                    setBlock(x, y, *block, true);
                 }
             }
         }

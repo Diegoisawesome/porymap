@@ -85,25 +85,37 @@ void NewMapPopup::setDefaultValues(int groupNum, QString mapSec) {
         ui->checkBox_NewMap_Allow_Running->setVisible(false);
         ui->checkBox_NewMap_Allow_Biking->setVisible(false);
         ui->checkBox_NewMap_Allow_Escape_Rope->setVisible(false);
-        ui->checkBox_NewMap_PhoneService->setVisible(false);
         ui->spinBox_NewMap_Floor_Number->setVisible(false);
+        ui->checkBox_NewMap_PhoneService->setVisible(false);
         ui->label_NewMap_Allow_Running->setVisible(false);
         ui->label_NewMap_Allow_Biking->setVisible(false);
         ui->label_NewMap_Allow_Escape_Rope->setVisible(false);
         ui->label_NewMap_Floor_Number->setVisible(false);
+        ui->label_NewMap_PhoneService->setVisible(false);
         break;
     case BaseGameVersion::pokeemerald:
         ui->checkBox_NewMap_Allow_Running->setVisible(true);
         ui->checkBox_NewMap_Allow_Biking->setVisible(true);
         ui->checkBox_NewMap_Allow_Escape_Rope->setVisible(true);
-        ui->checkBox_NewMap_PhoneService->setVisible(true);
         ui->spinBox_NewMap_Floor_Number->setVisible(true);
+        ui->checkBox_NewMap_PhoneService->setVisible(true);
         ui->label_NewMap_Allow_Running->setVisible(true);
         ui->label_NewMap_Allow_Biking->setVisible(true);
         ui->label_NewMap_Allow_Escape_Rope->setVisible(true);
         ui->label_NewMap_Floor_Number->setVisible(true);
+        ui->label_NewMap_PhoneService->setVisible(true);
         break;
     case BaseGameVersion::pokefirered:
+        ui->checkBox_NewMap_Allow_Running->setVisible(true);
+        ui->checkBox_NewMap_Allow_Biking->setVisible(true);
+        ui->checkBox_NewMap_Allow_Escape_Rope->setVisible(true);
+        ui->spinBox_NewMap_Floor_Number->setVisible(true);
+        ui->checkBox_NewMap_PhoneService->setVisible(false);
+        ui->label_NewMap_Allow_Running->setVisible(true);
+        ui->label_NewMap_Allow_Biking->setVisible(true);
+        ui->label_NewMap_Allow_Escape_Rope->setVisible(true);
+        ui->label_NewMap_Floor_Number->setVisible(true);
+        ui->label_NewMap_PhoneService->setVisible(false);
         break;
     }
     if (projectConfig.getUseCustomBorderSize()) {
@@ -144,11 +156,11 @@ void NewMapPopup::on_pushButton_NewMap_Accept_clicked() {
     newMap->name = newMapName;
     newMap->type = this->ui->comboBox_NewMap_Type->currentText();
     newMap->location = this->ui->comboBox_NewMap_Location->currentText();
-    newMap->song = "MUS_DAN02";
+    newMap->song = this->project->defaultSong;
     newMap->requiresFlash = "0";
-    newMap->weather = "WEATHER_SUNNY";
+    newMap->weather = this->project->weatherNames->value(0, "WEATHER_NONE");
     newMap->show_location = "1";
-    newMap->battle_scene = "MAP_BATTLE_SCENE_NORMAL";
+    newMap->battle_scene = this->project->mapBattleScenes->value(0, "MAP_BATTLE_SCENE_NORMAL");
 
     if (this->existingLayout) {
         layout = this->project->mapLayouts.value(this->layoutId);
@@ -181,6 +193,11 @@ void NewMapPopup::on_pushButton_NewMap_Accept_clicked() {
         newMap->allowBiking = this->ui->checkBox_NewMap_Allow_Biking->isChecked() ? "1" : "0";
         newMap->allowEscapeRope = this->ui->checkBox_NewMap_Allow_Escape_Rope->isChecked() ? "1" : "0";
         newMap->phoneService = this->ui->checkBox_NewMap_PhoneService->isChecked() ? "1" : "0";
+        newMap->floorNumber = this->ui->spinBox_NewMap_Floor_Number->value();
+    } else if (projectConfig.getBaseGameVersion() == BaseGameVersion::pokefirered) {
+        newMap->allowRunning = this->ui->checkBox_NewMap_Allow_Running->isChecked() ? "1" : "0";
+        newMap->allowBiking = this->ui->checkBox_NewMap_Allow_Biking->isChecked() ? "1" : "0";
+        newMap->allowEscapeRope = this->ui->checkBox_NewMap_Allow_Escape_Rope->isChecked() ? "1" : "0";
         newMap->floorNumber = this->ui->spinBox_NewMap_Floor_Number->value();
     }
 

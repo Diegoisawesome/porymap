@@ -10,6 +10,8 @@
 #include "imageexport.h"
 #include "map.h"
 
+#include "orderedjson.h"
+
 #include <QDir>
 #include <QJsonArray>
 #include <QJsonDocument>
@@ -22,6 +24,9 @@
 #include <QRegularExpression>
 #include <algorithm>
 
+using OrderedJson = poryjson::Json;
+using OrderedJsonDoc = poryjson::JsonDoc;
+
 int Project::num_tiles_primary = 512;
 int Project::num_tiles_total = 1024;
 int Project::num_metatiles_primary = 512;
@@ -29,10 +34,10 @@ int Project::num_metatiles_total = 1024;
 int Project::num_pals_primary = 6;
 int Project::num_pals_total = 13;
 
-Project::Project()
+Project::Project(QWidget *parent) : parent(parent)
 {
     groupNames = new QStringList;
-    map_groups = new QMap<QString, int>;
+    mapGroups = new QMap<QString, int>;
     mapNames = new QStringList;
     itemNames = new QStringList;
     flagNames = new QStringList;
@@ -46,10 +51,78 @@ Project::Project()
     fruitTreeIds = new QStringList;
     timesOfDay = new QStringList;
     bgEventFacingDirections = new QStringList;
-    map_cache = new QMap<QString, Map*>;
+    trainerTypes = new QStringList;
+    mapCache = new QMap<QString, Map*>;
     mapConstantsToMapNames = new QMap<QString, QString>;
     mapNamesToMapConstants = new QMap<QString, QString>;
-    tileset_cache = new QMap<QString, Tileset*>;
+    tilesetCache = new QMap<QString, Tileset*>;
+
+    initSignals();
+}
+
+Project::~Project()
+{
+    delete this->groupNames;
+    delete this->mapGroups;
+    delete this->mapNames;
+    delete this->itemNames;
+    delete this->flagNames;
+    delete this->varNames;
+    delete this->weatherNames;
+    delete this->coordEventWeatherNames;
+
+    delete this->secretBaseIds;
+    delete this->movementTypes;
+    delete this->bgEventFacingDirections;
+    delete this->mapBattleScenes;
+    delete this->trainerTypes;
+    delete this->mapTypes;
+
+    delete this->mapConstantsToMapNames;
+    delete this->mapNamesToMapConstants;
+    
+    clearMapCache();
+    delete this->mapCache;
+    clearTilesetCache();
+    delete this->tilesetCache;
+}
+
+void Project::initSignals() {
+    // detect changes to specific filepaths being monitored
+    QObject::connect(&fileWatcher, &QFileSystemWatcher::fileChanged, [this](QString changed){
+        if (!porymapConfig.getMonitorFiles()) return;
+        if (modifiedFileTimestamps.contains(changed)) {
+            if (QDateTime::currentMSecsSinceEpoch() < modifiedFileTimestamps[changed]) {
+                return;
+            }
+            modifiedFileTimestamps.remove(changed);
+        }
+
+        static bool showing = false;
+        if (showing) return;
+
+        QMessageBox notice(this->parent);
+        notice.setText("File Changed");
+        notice.setInformativeText(QString("The file %1 has changed on disk. Would you like to reload the project?")
+                                  .arg(changed.remove(this->root + "/")));
+        notice.setStandardButtons(QMessageBox::No | QMessageBox::Yes);
+        notice.setIcon(QMessageBox::Question);
+
+        QCheckBox showAgainCheck("Do not ask again.");
+        notice.setCheckBox(&showAgainCheck);
+
+        showing = true;
+        int choice = notice.exec();
+        if (choice == QMessageBox::Yes) {
+            emit reloadProject();
+        } else if (choice == QMessageBox::No) {
+            if (showAgainCheck.isChecked()) {
+                porymapConfig.setMonitorFiles(false);
+                emit uncheckMonitorFilesAction();
+            }
+        }
+        showing = false;
+    });
 }
 
 void Project::set_root(QString dir) {
@@ -65,10 +138,24 @@ QString Project::getProjectTitle() {
     }
 }
 
+void Project::clearMapCache() {
+    for (QString mapName : mapCache->keys()) {
+        Map *map = mapCache->take(mapName);
+        if (map) delete map;
+    }
+}
+
+void Project::clearTilesetCache() {
+    for (QString tilesetName : tilesetCache->keys()) {
+        Tileset *tileset = tilesetCache->take(tilesetName);
+        if (tileset) delete tileset;
+    }
+}
+
 Map* Project::loadMap(QString map_name) {
     Map *map;
-    if (map_cache->contains(map_name)) {
-        map = map_cache->value(map_name);
+    if (mapCache->contains(map_name)) {
+        map = mapCache->value(map_name);
         // TODO: uncomment when undo/redo history is fully implemented for all actions.
         if (true/*map->hasUnsavedChanges()*/) {
             return map;
@@ -83,7 +170,7 @@ Map* Project::loadMap(QString map_name) {
 
     map->commit();
     map->metatileHistory.save();
-    map_cache->insert(map_name, map);
+    mapCache->insert(map_name, map);
     return map;
 }
 
@@ -103,12 +190,39 @@ QMap<QString, bool> Project::getTopLevelMapFields() {
             {"requires_flash", true},
             {"weather", true},
             {"map_type", true},
-            {"allow_bike", true},
-            {"allow_escape_rope", true},
+            {"allow_cycling", true},
+            {"allow_escaping", true},
+            {"allow_running", true},
+            {"phone_service", true},
+            {"show_map_name", true},
+            {"floor_number", true},
+            {"battle_scene", true},
+            {"connections", true},
+            {"object_events", true},
+            {"warp_events", true},
+            {"coord_events", true},
+            {"bg_events", true},
+            {"shared_events_map", true},
+            {"shared_scripts_map", true},
+        };
+    } else if (projectConfig.getBaseGameVersion() == BaseGameVersion::pokefirered) {
+        return QMap<QString, bool>
+        {
+            {"id", true},
+            {"name", true},
+            {"layout", true},
+            {"music", true},
+            {"region_map_section", true},
+            {"requires_flash", true},
+            {"weather", true},
+            {"map_type", true},
+            {"allow_cycling", true},
+            {"allow_escaping", true},
             {"allow_running", true},
             {"phone_service", true},
             {"floor_number", true},
             {"show_map_name", true},
+            {"floor_number", true},
             {"battle_scene", true},
             {"connections", true},
             {"object_events", true},
@@ -168,13 +282,17 @@ bool Project::loadMapData(Map* map) {
     map->requiresFlash = QString::number(mapObj["requires_flash"].toBool());
     map->show_location = QString::number(mapObj["show_map_name"].toBool());
     map->battle_scene = mapObj["battle_scene"].toString();
-    if (projectConfig.getBaseGameVersion() == BaseGameVersion::pokeemerald) {
-        map->allowBiking = QString::number(mapObj["allow_bike"].toBool());
-        map->allowEscapeRope = QString::number(mapObj["allow_escape_rope"].toBool());
+    /*if (projectConfig.getBaseGameVersion() == BaseGameVersion::pokeemerald) {
+        map->allowBiking = QString::number(mapObj["allow_cycling"].toBool());
+        map->allowEscapeRope = QString::number(mapObj["allow_escaping"].toBool());
+        map->allowRunning = QString::number(mapObj["allow_running"].toBool());
+    } else if (projectConfig.getBaseGameVersion() == BaseGameVersion::pokefirered) {*/
+        map->allowBiking = QString::number(mapObj["allow_cycling"].toBool());
+        map->allowEscapeRope = QString::number(mapObj["allow_escaping"].toBool());
         map->allowRunning = QString::number(mapObj["allow_running"].toBool());
         map->phoneService = QString::number(mapObj["phone_service"].toBool());
         map->floorNumber = mapObj["floor_number"].toInt();
-    }
+    //}
     map->sharedEventsMap = mapObj["shared_events_map"].toString();
     map->sharedScriptsMap = mapObj["shared_scripts_map"].toString();
 
@@ -211,6 +329,9 @@ bool Project::loadMapData(Map* map) {
             Event *object = new Event(event, EventType::Object);
             object->put("map_name", map->name);
             object->put("sprite", event["graphics_id"].toString());
+            //if (projectConfig.getBaseGameVersion() == BaseGameVersion::pokefirered) {
+                object->put("in_connection", event["in_connection"].toBool());
+            //}
             object->put("x", QString::number(event["x"].toInt()));
             object->put("y", QString::number(event["y"].toInt()));
             object->put("elevation", QString::number(event["elevation"].toInt()));
@@ -253,22 +374,27 @@ bool Project::loadMapData(Map* map) {
     }
 
     map->events["heal_event_group"].clear();
-    for (auto it = flyableMaps.begin(); it != flyableMaps.end(); it++) {
+    for (auto it = healLocations.begin(); it != healLocations.end(); it++) {
 
         HealLocation loc = *it;
 
         //if TRUE map is flyable / has healing location
-        if (loc.name == QString(mapNamesToMapConstants->value(map->name)).remove(0,4)) {
+        if (loc.mapName == QString(mapNamesToMapConstants->value(map->name)).remove(0,4)) {
             Event *heal = new Event;
             heal->put("map_name", map->name);
             heal->put("x", loc.x);
             heal->put("y", loc.y);
-            heal->put("loc_name", loc.name);
+            heal->put("loc_name", loc.mapName);
+            heal->put("id_name", loc.idName);
             heal->put("index", loc.index);
             heal->put("elevation", 3); // TODO: change this?
             heal->put("destination_map_name", mapConstantsToMapNames->value(map->name));
             heal->put("event_group_type", "heal_event_group");
             heal->put("event_type", EventType::HealLocation);
+            if (projectConfig.getBaseGameVersion() == BaseGameVersion::pokefirered) {
+                heal->put("respawn_map", mapConstantsToMapNames->value(QString("MAP_" + loc.respawnMap)));
+                heal->put("respawn_npc", loc.respawnNPC);
+            }
             map->events["heal_event_group"].append(heal);
         }
 
@@ -328,6 +454,10 @@ bool Project::loadMapData(Map* map) {
             bg->put("elevation", QString::number(event["elevation"].toInt()));
             bg->put("item", event["item"].toString());
             bg->put("flag", event["flag"].toString());
+            if (projectConfig.getBaseGameVersion() == BaseGameVersion::pokefirered) {
+                bg->put("quantity", event["quantity"].toInt());
+                bg->put("underfoot", event["underfoot"].toBool());
+            }
             bg->put("event_group_type", "bg_event_group");
             map->events["bg_event_group"].append(bg);
         } else if (type == "secret_base") {
@@ -383,8 +513,8 @@ bool Project::loadMapData(Map* map) {
 }
 
 QString Project::readMapLayoutId(QString map_name) {
-    if (map_cache->contains(map_name)) {
-        return map_cache->value(map_name)->layoutId;
+    if (mapCache->contains(map_name)) {
+        return mapCache->value(map_name)->layoutId;
     }
 
     QString mapFilepath = QString("%1/data/maps/%2/map.json").arg(root).arg(map_name);
@@ -399,8 +529,8 @@ QString Project::readMapLayoutId(QString map_name) {
 }
 
 QString Project::readMapLocation(QString map_name) {
-    if (map_cache->contains(map_name)) {
-        return map_cache->value(map_name)->location;
+    if (mapCache->contains(map_name)) {
+        return mapCache->value(map_name)->location;
     }
 
     QString mapFilepath = QString("%1/data/maps/%2/map.json").arg(root).arg(map_name);
@@ -415,12 +545,12 @@ QString Project::readMapLocation(QString map_name) {
 }
 
 void Project::setNewMapHeader(Map* map, int mapIndex) {
-    map->song = "MUS_DAN02";
     map->layoutId = QString("%1").arg(mapIndex);
-    map->location = "MAPSEC_LITTLEROOT_TOWN";
+    map->location = mapSectionValueToName.value(0);
     map->requiresFlash = "FALSE";
-    map->weather = "WEATHER_SUNNY";
-    map->type = "MAP_TYPE_TOWN";
+    map->weather = weatherNames->value(0, "WEATHER_NONE");
+    map->type = mapTypes->value(0, "MAP_TYPE_NONE");
+    map->song = defaultSong;
     if (projectConfig.getBaseGameVersion() == BaseGameVersion::pokeruby) {
         map->show_location = "TRUE";
     } else if (projectConfig.getBaseGameVersion() == BaseGameVersion::pokeemerald) {
@@ -428,10 +558,17 @@ void Project::setNewMapHeader(Map* map, int mapIndex) {
         map->allowEscapeRope = "0";
         map->allowRunning = "1";
         map->show_location = "1";
+        map->floorNumber = 0;
         map->phoneService = "1";
+    }  else if (projectConfig.getBaseGameVersion() == BaseGameVersion::pokefirered) {
+        map->allowBiking = "1";
+        map->allowEscapeRope = "0";
+        map->allowRunning = "1";
+        map->show_location = "1";
+        map->floorNumber = 0;
     }
 
-    map->battle_scene = "MAP_BATTLE_SCENE_NORMAL";
+    map->battle_scene = mapBattleScenes->value(0, "MAP_BATTLE_SCENE_NORMAL");
 }
 
 bool Project::loadMapLayout(Map* map) {
@@ -446,9 +583,14 @@ bool Project::loadMapLayout(Map* map) {
         return false;
     }
 
-    return loadMapTilesets(map)
-        && loadBlockdata(map)
-        && loadMapBorder(map);
+    // Force these to run even if one fails
+    bool loadedTilesets = loadMapTilesets(map);
+    bool loadedBlockdata = loadBlockdata(map);
+    bool loadedBorder = loadMapBorder(map);
+
+    return loadedTilesets 
+        && loadedBlockdata 
+        && loadedBorder;
 }
 
 bool Project::readMapLayouts() {
@@ -456,6 +598,7 @@ bool Project::readMapLayouts() {
     mapLayoutsTable.clear();
 
     QString layoutsFilepath = QString("%1/data/layouts/layouts.json").arg(root);
+    fileWatcher.addPath(layoutsFilepath);
     QJsonDocument layoutsDoc;
     if (!parser.tryParseJsonFile(&layoutsDoc, layoutsFilepath)) {
         logError(QString("Failed to read map layouts from %1").arg(layoutsFilepath));
@@ -494,6 +637,8 @@ bool Project::readMapLayouts() {
     }
     for (int i = 0; i < layouts.size(); i++) {
         QJsonObject layoutObj = layouts[i].toObject();
+        if (layoutObj.isEmpty())
+            continue;
         if (!parser.ensureFieldsExist(layoutObj, requiredFields)) {
             logError(QString("Layout %1 is missing field(s) in %2.").arg(i).arg(layoutsFilepath));
             return false;
@@ -578,14 +723,14 @@ void Project::saveMapLayouts() {
         return;
     }
 
-    QJsonObject layoutsObj;
+    OrderedJson::object layoutsObj;
     layoutsObj["layouts_table_label"] = layoutsLabel;
 
     bool useCustomBorderSize = projectConfig.getUseCustomBorderSize();
-    QJsonArray layoutsArr;
+    OrderedJson::array layoutsArr;
     for (QString layoutId : mapLayoutsTableMaster) {
         MapLayout *layout = mapLayouts.value(layoutId);
-        QJsonObject layoutObj;
+        OrderedJson::object layoutObj;
         layoutObj["id"] = layout->id;
         layoutObj["name"] = layout->name;
         layoutObj["width"] = layout->width.toInt(nullptr, 0);
@@ -598,12 +743,21 @@ void Project::saveMapLayouts() {
         layoutObj["secondary_tileset"] = layout->tileset_secondary_label;
         layoutObj["border_filepath"] = layout->border_path;
         layoutObj["blockdata_filepath"] = layout->blockdata_path;
-        layoutsArr.append(layoutObj);
+        layoutsArr.push_back(layoutObj);
     }
 
+    ignoreWatchedFileTemporarily(layoutsFilepath);
+
     layoutsObj["layouts"] = layoutsArr;
-    QJsonDocument layoutsDoc(layoutsObj);
-    layoutsFile.write(layoutsDoc.toJson());
+    OrderedJson layoutJson(layoutsObj);
+    OrderedJsonDoc jsonDoc(&layoutJson);
+    jsonDoc.dump(&layoutsFile);
+    layoutsFile.close();
+}
+
+void Project::ignoreWatchedFileTemporarily(QString filepath) {
+    // Ignore any file-change events for this filepath for the next 5 seconds.
+    modifiedFileTimestamps.insert(filepath, QDateTime::currentMSecsSinceEpoch() + 5000);
 }
 
 void Project::setNewMapLayout(Map* map) {
@@ -616,8 +770,8 @@ void Project::setNewMapLayout(Map* map) {
     layout->border_height = DEFAULT_BORDER_HEIGHT;
     layout->border_path = QString("data/layouts/%1/border.bin").arg(map->name);
     layout->blockdata_path = QString("data/layouts/%1/map.bin").arg(map->name);
-    layout->tileset_primary_label = "gTileset_General";
-    layout->tileset_secondary_label = "gTileset_Petalburg";
+    layout->tileset_primary_label = tilesetLabels["primary"].value(0, "gTileset_General");
+    layout->tileset_secondary_label = tilesetLabels["secondary"].value(0, projectConfig.getBaseGameVersion() == BaseGameVersion::pokefirered ? "gTileset_PalletTown" : "gTileset_Petalburg");
     map->layout = layout;
     map->layoutId = layout->id;
 
@@ -634,27 +788,31 @@ void Project::saveMapGroups() {
         return;
     }
 
-    QJsonObject mapGroupsObj;
+    OrderedJson::object mapGroupsObj;
     mapGroupsObj["layouts_table_label"] = layoutsLabel;
 
-    QJsonArray groupNamesArr;
+    OrderedJson::array groupNamesArr;
     for (QString groupName : *this->groupNames) {
-        groupNamesArr.append(groupName);
+        groupNamesArr.push_back(groupName);
     }
     mapGroupsObj["group_order"] = groupNamesArr;
 
     int groupNum = 0;
     for (QStringList mapNames : groupedMapNames) {
-        QJsonArray groupArr;
+        OrderedJson::array groupArr;
         for (QString mapName : mapNames) {
-            groupArr.append(mapName);
+            groupArr.push_back(mapName);
         }
         mapGroupsObj[this->groupNames->at(groupNum)] = groupArr;
         groupNum++;
     }
 
-    QJsonDocument mapGroupsDoc(mapGroupsObj);
-    mapGroupsFile.write(mapGroupsDoc.toJson());
+    ignoreWatchedFileTemporarily(mapGroupsFilepath);
+
+    OrderedJson mapGroupJson(mapGroupsObj);
+    OrderedJsonDoc jsonDoc(&mapGroupJson);
+    jsonDoc.dump(&mapGroupsFile);
+    mapGroupsFile.close();
 }
 
 void Project::saveWildMonData() {
@@ -667,90 +825,95 @@ void Project::saveWildMonData() {
         return;
     }
 
-    QJsonObject wildEncountersObject;
-    QJsonArray wildEncounterGroups = QJsonArray();
+    OrderedJson::object wildEncountersObject;
+    OrderedJson::array wildEncounterGroups;
 
     // gWildMonHeaders label is not mutable
-    QJsonObject monHeadersObject;
+    OrderedJson::object monHeadersObject;
     monHeadersObject["label"] = "gWildMonHeaders";
     monHeadersObject["for_maps"] = true;
 
-    QJsonArray fieldsInfoArray;
+    OrderedJson::array fieldsInfoArray;
     for (EncounterField fieldInfo : wildMonFields) {
-        QJsonObject fieldObject;
-        QJsonArray rateArray;
+        OrderedJson::object fieldObject;
+        OrderedJson::array rateArray;
 
         for (int rate : fieldInfo.encounterRates) {
-            rateArray.append(rate);
+            rateArray.push_back(rate);
         }
 
         fieldObject["type"] = fieldInfo.name;
         fieldObject["encounter_rates"] = rateArray;
 
-        QJsonObject groupsObject;
+        OrderedJson::object groupsObject;
         for (QString groupName : fieldInfo.groups.keys()) {
-            QJsonArray subGroupIndices;
+            OrderedJson::array subGroupIndices;
             std::sort(fieldInfo.groups[groupName].begin(), fieldInfo.groups[groupName].end());
             for (int slotIndex : fieldInfo.groups[groupName]) {
-                subGroupIndices.append(slotIndex);
+                subGroupIndices.push_back(slotIndex);
             }
             groupsObject[groupName] = subGroupIndices;
         }
-        if (!groupsObject.isEmpty()) fieldObject["groups"] = groupsObject;
+        if (!groupsObject.empty()) fieldObject["groups"] = groupsObject;
 
         fieldsInfoArray.append(fieldObject);
     }
     monHeadersObject["fields"] = fieldsInfoArray;
 
-    QJsonArray encountersArray = QJsonArray();
-    for (QString key : wildMonData.keys()) {
-        for (QString groupLabel : wildMonData.value(key).keys()) {
-            QJsonObject encounterObject;
+    OrderedJson::array encountersArray;
+    for (auto keyPair : wildMonData) {
+        QString key = keyPair.first;
+        for (auto grouplLabelPair : wildMonData[key]) {
+            QString groupLabel = grouplLabelPair.first;
+            OrderedJson::object encounterObject;
             encounterObject["map"] = key;
             encounterObject["base_label"] = groupLabel;
 
-            WildPokemonHeader encounterHeader = wildMonData.value(key).value(groupLabel);
+            WildPokemonHeader encounterHeader = wildMonData[key][groupLabel];
             for (QString fieldName : encounterHeader.wildMons.keys()) {
-                QJsonObject fieldObject;
+                OrderedJson::object fieldObject;
                 WildMonInfo monInfo = encounterHeader.wildMons.value(fieldName);
                 fieldObject["encounter_rate"] = monInfo.encounterRate;
-                QJsonArray timeArray;
+                OrderedJson::array timeArray;
                 for (QVector<WildPokemon>& time : monInfo.wildPokemon)
                 {
-                    QJsonArray monArray;
+                    OrderedJson::array monArray;
                     for (WildPokemon wildMon : time) {
-                        QJsonObject monEntry;
+                        OrderedJson::object monEntry;
                         monEntry["min_level"] = wildMon.minLevel;
                         monEntry["max_level"] = wildMon.maxLevel;
                         monEntry["species"] = wildMon.species;
-                        monArray.append(monEntry);
+                        monArray.push_back(monEntry);
                     }
-                    timeArray.append(monArray);
+                    timeArray.push_back(monArray);
                 }
                 fieldObject["mons"] = timeArray;
                 encounterObject[fieldName] = fieldObject;
             }
-            encountersArray.append(encounterObject);
+            encountersArray.push_back(encounterObject);
         }
     }
     monHeadersObject["encounters"] = encountersArray;
-    wildEncounterGroups.append(monHeadersObject);
+    wildEncounterGroups.push_back(monHeadersObject);
 
     // add extra Json objects that are not associated with maps to the file
-    for (QString label : extraEncounterGroups.keys()) {
-        wildEncounterGroups.append(extraEncounterGroups[label]);
+    for (auto extraObject : extraEncounterGroups) {
+        wildEncounterGroups.push_back(extraObject);
     }
 
-    QJsonArray timesOfDayJson = QJsonArray();
+    OrderedJson::array timesOfDayJson;
     for (QString time : *timesOfDay)
     {
-        timesOfDayJson.append(time.mid(5));
+        timesOfDayJson.push_back(time.mid(5));
     }
 
     wildEncountersObject["wild_encounter_groups"] = wildEncounterGroups;
     wildEncountersObject["times"] = timesOfDayJson;
-    QJsonDocument wildEncountersDoc(wildEncountersObject);
-    wildEncountersFile.write(wildEncountersDoc.toJson());
+
+    ignoreWatchedFileTemporarily(wildEncountersJsonFilepath);
+    OrderedJson encounterJson(wildEncountersObject);
+    OrderedJsonDoc jsonDoc(&encounterJson);
+    jsonDoc.dump(&wildEncountersFile);
     wildEncountersFile.close();
 }
 
@@ -784,74 +947,118 @@ void Project::saveMapConstantsHeader() {
 
     text += QString("#define MAP_GROUPS_COUNT %1\n\n").arg(groupNum);
     text += QString("#endif // GUARD_CONSTANTS_MAP_GROUPS_H\n");
-    saveTextFile(root + "/include/constants/map_groups.h", text);
+
+    QString mapGroupFilepath = root + "/include/constants/map_groups.h";
+    ignoreWatchedFileTemporarily(mapGroupFilepath);
+    saveTextFile(mapGroupFilepath, text);
 }
 
 // saves heal location coords in root + /src/data/heal_locations.h
 // and indexes as defines in root + /include/constants/heal_locations.h
 void Project::saveHealLocationStruct(Map *map) {
-    QString data_text = QString("%1%2struct HealLocation sHealLocations[] =\n{\n")
+    QString constantPrefix, arrayName;
+    if (projectConfig.getBaseGameVersion() == BaseGameVersion::pokefirered) {
+        constantPrefix = "SPAWN_";
+        arrayName = "sSpawnPoints";
+    } else {
+        constantPrefix = "HEAL_LOCATION_";
+        arrayName = "sHealLocations";
+    }
+
+    QString data_text = QString("%1%2struct HealLocation %3[] =\n{\n")
         .arg(dataQualifiers.value("heal_locations").isStatic ? "static " : "")
-        .arg(dataQualifiers.value("heal_locations").isConst ? "const " : "");
+        .arg(dataQualifiers.value("heal_locations").isConst ? "const " : "")
+        .arg(arrayName);
 
     QString constants_text = QString("#ifndef GUARD_CONSTANTS_HEAL_LOCATIONS_H\n");
     constants_text += QString("#define GUARD_CONSTANTS_HEAL_LOCATIONS_H\n\n");
 
-    QMap<QString, int> flyableMapsDupes;
-    QSet<QString> flyableMapsUnique;
+    QMap<QString, int> healLocationsDupes;
+    QSet<QString> healLocationsUnique;
 
-    // set flyableMapsDupes and flyableMapsUnique
-    for (auto it = flyableMaps.begin(); it != flyableMaps.end(); it++) {
+    // set healLocationsDupes and healLocationsUnique
+    for (auto it = healLocations.begin(); it != healLocations.end(); it++) {
         HealLocation loc = *it;
-        QString xname = loc.name;
-        if (flyableMapsUnique.contains(xname)) {
-            flyableMapsDupes[xname] = 1;
+        QString xname = loc.idName;
+        if (healLocationsUnique.contains(xname)) {
+            healLocationsDupes[xname] = 1;
         }
-        flyableMapsUnique.insert(xname);
+        healLocationsUnique.insert(xname);
     }
 
-    // set new location in flyableMapsList
+    // set new location in healLocations list
     if (map->events["heal_event_group"].length() > 0) {
         for (Event *healEvent : map->events["heal_event_group"]) {
             HealLocation hl = HealLocation::fromEvent(healEvent);
-            flyableMaps[hl.index - 1] = hl;
+            healLocations[hl.index - 1] = hl;
         }
     }
 
     int i = 1;
+    for (auto map_in : healLocations) {
+        // add numbered suffix for duplicate constants
+        if (healLocationsDupes.keys().contains(map_in.idName)) {
+            QString duplicateName = map_in.idName;
+            map_in.idName += QString("_%1").arg(healLocationsDupes[duplicateName]);
+            healLocationsDupes[duplicateName]++;
+        }
 
-    for (auto map_in : flyableMaps) {
-        data_text += QString("    {MAP_GROUP(%1), MAP_NUM(%1), %2, %3},\n")
-                     .arg(map_in.name)
+        // Save first array (heal location coords), only data array in RSE
+        data_text += QString("    [%1%2 - 1] = {MAP_GROUP(%3), MAP_NUM(%3), %4, %5},\n")
+                     .arg(constantPrefix)
+                     .arg(map_in.idName)
+                     .arg(map_in.mapName)
                      .arg(map_in.x)
                      .arg(map_in.y);
 
-        QString ending = QString("");
-
-        // must add _1 / _2 for maps that have duplicates
-        if (flyableMapsDupes.keys().contains(map_in.name)) {
-            // map contains multiple heal locations
-            ending += QString("_%1").arg(flyableMapsDupes[map_in.name]);
-            flyableMapsDupes[map_in.name]++;
-        }
+        // Save constants
         if (map_in.index != 0) {
-            constants_text += QString("#define HEAL_LOCATION_%1 %2\n")
-                              .arg(map_in.name + ending)
+            constants_text += QString("#define %1%2 %3\n")
+                              .arg(constantPrefix)
+                              .arg(map_in.idName)
                               .arg(map_in.index);
-        }
-        else {
-            constants_text += QString("#define HEAL_LOCATION_%1 %2\n")
-                              .arg(map_in.name + ending)
+        } else {
+            constants_text += QString("#define %1%2 %3\n")
+                              .arg(constantPrefix)
+                              .arg(map_in.idName)
                               .arg(i);
         }
         i++;
+    }
+    if (projectConfig.getBaseGameVersion() == BaseGameVersion::pokefirered) {
+        // Save second array (map where player respawns for each heal location)
+        data_text += QString("};\n\n%1%2u16 sWhiteoutRespawnHealCenterMapIdxs[][2] =\n{\n")
+                        .arg(dataQualifiers.value("heal_locations").isStatic ? "static " : "")
+                        .arg(dataQualifiers.value("heal_locations").isConst ? "const " : "");
+        for (auto map_in : healLocations) {
+            data_text += QString("    [%1%2 - 1] = {MAP_GROUP(%3), MAP_NUM(%3)},\n")
+                         .arg(constantPrefix)
+                         .arg(map_in.idName)
+                         .arg(map_in.respawnMap);
+        }
+
+        // Save third array (object id of NPC player speaks to upon respawning for each heal location)
+        data_text += QString("};\n\n%1%2u8 sWhiteoutRespawnHealerNpcIds[] =\n{\n")
+                        .arg(dataQualifiers.value("heal_locations").isStatic ? "static " : "")
+                        .arg(dataQualifiers.value("heal_locations").isConst ? "const " : "");
+        for (auto map_in : healLocations) {
+            data_text += QString("    [%1%2 - 1] = %3,\n")
+                         .arg(constantPrefix)
+                         .arg(map_in.idName)
+                         .arg(map_in.respawnNPC);
+        }
     }
 
     data_text += QString("};\n");
     constants_text += QString("\n#endif // GUARD_CONSTANTS_HEAL_LOCATIONS_H\n");
 
-    saveTextFile(root + "/src/data/heal_locations.h", data_text);
-    saveTextFile(root + "/include/constants/heal_locations.h", constants_text);
+    QString healLocationFilepath = root + "/src/data/heal_locations.h";
+    ignoreWatchedFileTemporarily(healLocationFilepath);
+    saveTextFile(healLocationFilepath, data_text);
+
+    QString healLocationConstantsFilepath = root + "/include/constants/heal_locations.h";
+    ignoreWatchedFileTemporarily(healLocationConstantsFilepath);
+    saveTextFile(healLocationConstantsFilepath, constants_text);
 }
 
 void Project::saveTilesets(Tileset *primaryTileset, Tileset *secondaryTileset) {
@@ -862,8 +1069,8 @@ void Project::saveTilesets(Tileset *primaryTileset, Tileset *secondaryTileset) {
     saveTilesetMetatiles(secondaryTileset);
     saveTilesetTilesImage(primaryTileset);
     saveTilesetTilesImage(secondaryTileset);
-    saveTilesetPalettes(primaryTileset, true);
-    saveTilesetPalettes(secondaryTileset, false);
+    saveTilesetPalettes(primaryTileset);
+    saveTilesetPalettes(secondaryTileset);
 }
 
 void Project::saveTilesetMetatileLabels(Tileset *primaryTileset, Tileset *secondaryTileset) {
@@ -943,6 +1150,8 @@ void Project::saveTilesetMetatileLabels(Tileset *primaryTileset, Tileset *second
     }
 
     outputText += "\n#endif // GUARD_METATILE_LABELS_H\n";
+
+
     saveTextFile(root + "/include/constants/metatile_labels.h", outputText);
 }
 
@@ -950,9 +1159,21 @@ void Project::saveTilesetMetatileAttributes(Tileset *tileset) {
     QFile attrs_file(tileset->metatile_attrs_path);
     if (attrs_file.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
         QByteArray data;
-        for (Metatile *metatile : *tileset->metatiles) {
-            data.append(static_cast<char>(metatile->behavior));
-            data.append(static_cast<char>((metatile->layerType << 4) & 0xF0));
+
+        if (projectConfig.getBaseGameVersion() == BaseGameVersion::pokefirered) {
+            for (Metatile *metatile : *tileset->metatiles) {
+                data.append(static_cast<char>(metatile->behavior));
+                data.append(static_cast<char>(metatile->behavior >> 8) |
+                            static_cast<char>(metatile->terrainType << 1));
+                data.append(static_cast<char>(0));
+                data.append(static_cast<char>(metatile->encounterType) | 
+                            static_cast<char>(metatile->layerType << 5));
+            }
+        } else {
+            for (Metatile *metatile : *tileset->metatiles) {
+                data.append(static_cast<char>(metatile->behavior));
+                data.append(static_cast<char>((metatile->layerType << 4) & 0xF0));
+            }
         }
         attrs_file.write(data);
     } else {
@@ -986,7 +1207,7 @@ void Project::saveTilesetTilesImage(Tileset *tileset) {
     exportIndexed4BPPPng(tileset->tilesImage, tileset->tilesImagePath);
 }
 
-void Project::saveTilesetPalettes(Tileset *tileset, bool /*primary*/) {
+void Project::saveTilesetPalettes(Tileset *tileset) {
     PaletteUtil paletteParser;
     for (int i = 0; i < Project::getNumPalettesTotal(); i++) {
         QString filepath = tileset->palettePaths.at(i);
@@ -1001,14 +1222,26 @@ bool Project::loadMapTilesets(Map* map) {
 
     map->layout->tileset_primary = getTileset(map->layout->tileset_primary_label);
     if (!map->layout->tileset_primary) {
-        logError(QString("Map layout %1 has invalid primary tileset '%2'").arg(map->layout->id).arg(map->layout->tileset_primary_label));
-        return false;
+        QString defaultTileset = tilesetLabels["primary"].value(0, "gTileset_General");
+        logWarn(QString("Map layout %1 has invalid primary tileset '%2'. Using default '%3'").arg(map->layout->id).arg(map->layout->tileset_primary_label).arg(defaultTileset));
+        map->layout->tileset_primary_label = defaultTileset;
+        map->layout->tileset_primary = getTileset(map->layout->tileset_primary_label);
+        if (!map->layout->tileset_primary) {
+            logError(QString("Failed to set default primary tileset."));
+            return false;
+        }
     }
 
     map->layout->tileset_secondary = getTileset(map->layout->tileset_secondary_label);
     if (!map->layout->tileset_secondary) {
-        logError(QString("Map layout %1 has invalid secondary tileset '%2'").arg(map->layout->id).arg(map->layout->tileset_secondary_label));
-        return false;
+        QString defaultTileset = tilesetLabels["secondary"].value(0, projectConfig.getBaseGameVersion() == BaseGameVersion::pokefirered ? "gTileset_PalletTown" : "gTileset_Petalburg");
+        logWarn(QString("Map layout %1 has invalid secondary tileset '%2'. Using default '%3'").arg(map->layout->id).arg(map->layout->tileset_secondary_label).arg(defaultTileset));
+        map->layout->tileset_secondary_label = defaultTileset;
+        map->layout->tileset_secondary = getTileset(map->layout->tileset_secondary_label);
+        if (!map->layout->tileset_secondary) {
+            logError(QString("Failed to set default secondary tileset."));
+            return false;
+        }
     }
     return true;
 }
@@ -1028,12 +1261,17 @@ Tileset* Project::loadTileset(QString label, Tileset *tileset) {
     tileset->tiles_label = values->value(3);
     tileset->palettes_label = values->value(4);
     tileset->metatiles_label = values->value(6);
-    tileset->metatile_attrs_label = values->value(7);
-    tileset->callback_label = values->value(8);
+    if (projectConfig.getBaseGameVersion() == BaseGameVersion::pokefirered) {
+        tileset->callback_label = values->value(6);
+        tileset->metatile_attrs_label = values->value(7);
+    } else {
+        tileset->metatile_attrs_label = values->value(7);
+        tileset->callback_label = values->value(8);
+    }
 
     loadTilesetAssets(tileset);
 
-    tileset_cache->insert(label, tileset);
+    tilesetCache->insert(label, tileset);
     return tileset;
 }
 
@@ -1123,10 +1361,10 @@ void Project::writeBlockdata(QString path, Blockdata *blockdata) {
 }
 
 void Project::saveAllMaps() {
-    QList<QString> keys = map_cache->keys();
+    QList<QString> keys = mapCache->keys();
     for (int i = 0; i < keys.length(); i++) {
         QString key = keys.value(i);
-        Map* map = map_cache->value(key);
+        Map* map = mapCache->value(key);
         saveMap(map);
     }
 }
@@ -1143,14 +1381,14 @@ void Project::saveMap(Map *map) {
         QString text = this->getScriptDefaultString(projectConfig.getUsePoryScript(), map->name);
         saveTextFile(root + "/data/maps/" + map->name + "/scripts" + this->getScriptFileExtension(projectConfig.getUsePoryScript()), text);
 
-        if (projectConfig.getBaseGameVersion() == BaseGameVersion::pokeruby) {
+        if (projectConfig.getBaseGameVersion() == BaseGameVersion::pokeruby || projectConfig.getBaseGameVersion() == BaseGameVersion::pokefirered) {
             // Create file data/maps/<map_name>/text.inc
             saveTextFile(root + "/data/maps/" + map->name + "/text" + this->getScriptFileExtension(projectConfig.getUsePoryScript()), "\n");
         }
 
         // Simply append to data/event_scripts.s.
         text = QString("\n\t.include \"data/maps/%1/scripts.inc\"\n").arg(map->name);
-        if (projectConfig.getBaseGameVersion() == BaseGameVersion::pokeruby) {
+        if (projectConfig.getBaseGameVersion() == BaseGameVersion::pokeruby || projectConfig.getBaseGameVersion() == BaseGameVersion::pokefirered) {
             text += QString("\t.include \"data/maps/%1/text.inc\"\n").arg(map->name);
         }
         appendTextFile(root + "/data/event_scripts.s", text);
@@ -1204,7 +1442,7 @@ void Project::saveMap(Map *map) {
         return;
     }
 
-    QJsonObject mapObj;
+    OrderedJson::object mapObj;
     // Header values.
     mapObj["id"] = map->constantName;
     mapObj["name"] = map->name;
@@ -1214,20 +1452,22 @@ void Project::saveMap(Map *map) {
     mapObj["requires_flash"] = map->requiresFlash.toInt() > 0 || map->requiresFlash == "TRUE";
     mapObj["weather"] = map->weather;
     mapObj["map_type"] = map->type;
-    mapObj["allow_bike"] = map->allowBiking.toInt() > 0 || map->allowBiking == "TRUE";
-    mapObj["allow_escape_rope"] = map->allowEscapeRope.toInt() > 0 || map->allowEscapeRope == "TRUE";
+    mapObj["allow_cycling"] = map->allowBiking.toInt() > 0 || map->allowBiking == "TRUE";
+    mapObj["allow_escaping"] = map->allowEscapeRope.toInt() > 0 || map->allowEscapeRope == "TRUE";
     mapObj["allow_running"] = map->allowRunning.toInt() > 0 || map->allowRunning == "TRUE";
     mapObj["phone_service"] = map->phoneService.toInt() > 0 || map->phoneService == "TRUE";
     mapObj["show_map_name"] = map->show_location.toInt() > 0 || map->show_location == "TRUE";
-    mapObj["floor_number"] = map->floorNumber;
+    //if (projectConfig.getBaseGameVersion() == BaseGameVersion::pokefirered) {
+        mapObj["floor_number"] = map->floorNumber;
+    //}
     mapObj["battle_scene"] = map->battle_scene;
 
     // Connections
     if (map->connections.length() > 0) {
-        QJsonArray connectionsArr;
+        OrderedJson::array connectionsArr;
         for (MapConnection* connection : map->connections) {
             if (mapNamesToMapConstants->contains(connection->map_name)) {
-                QJsonObject connectionObj;
+                OrderedJson::object connectionObj;
                 connectionObj["direction"] = connection->direction;
                 connectionObj["offset"] = connection->offset.toInt();
                 connectionObj["map"] = this->mapNamesToMapConstants->value(connection->map_name);
@@ -1243,60 +1483,60 @@ void Project::saveMap(Map *map) {
 
     if (map->sharedEventsMap.isEmpty()) {
         // Object events
-        QJsonArray objectEventsArr;
+        OrderedJson::array objectEventsArr;
         for (int i = 0; i < map->events["object_event_group"].length(); i++) {
-            Event *event = map->events["object_event_group"].value(i);
-            QString event_type = event->get("event_type");
+            Event *object_event = map->events["object_event_group"].value(i);
+            QString event_type = object_event->get("event_type");
             if (event_type == EventType::Object) {
-                QJsonObject eventObj = event->buildObjectEventJSON();
-                objectEventsArr.append(eventObj);
+                OrderedJson::object eventObj = object_event->buildObjectEventJSON();
+                objectEventsArr.push_back(eventObj);
             } else if (event_type == EventType::ObjectClone) {
-                QJsonObject cloneObj = event->buildObjectCloneEventJSON(mapNamesToMapConstants);
-                objectEventsArr.append(cloneObj);
+                OrderedJson::object eventObj = object_event->buildObjectCloneEventJSON(mapNamesToMapConstants);
+                objectEventsArr.push_back(eventObj);
             }
         }
         mapObj["object_events"] = objectEventsArr;
 
         // Warp events
-        QJsonArray warpEventsArr;
+        OrderedJson::array warpEventsArr;
         for (int i = 0; i < map->events["warp_event_group"].length(); i++) {
             Event *warp_event = map->events["warp_event_group"].value(i);
-            QJsonObject warpObj = warp_event->buildWarpEventJSON(mapNamesToMapConstants);
+            OrderedJson::object warpObj = warp_event->buildWarpEventJSON(mapNamesToMapConstants);
             warpEventsArr.append(warpObj);
         }
         mapObj["warp_events"] = warpEventsArr;
 
         // Coord events
-        QJsonArray coordEventsArr;
+        OrderedJson::array coordEventsArr;
         for (int i = 0; i < map->events["coord_event_group"].length(); i++) {
             Event *event = map->events["coord_event_group"].value(i);
             QString event_type = event->get("event_type");
             if (event_type == EventType::Trigger) {
-                QJsonObject triggerObj = event->buildTriggerEventJSON();
+                OrderedJson::object triggerObj = event->buildTriggerEventJSON();
                 coordEventsArr.append(triggerObj);
             } else if (event_type == EventType::WeatherTrigger) {
-                QJsonObject weatherObj = event->buildWeatherTriggerEventJSON();
+                OrderedJson::object weatherObj = event->buildWeatherTriggerEventJSON();
                 coordEventsArr.append(weatherObj);
             }
         }
         mapObj["coord_events"] = coordEventsArr;
 
         // Bg Events
-        QJsonArray bgEventsArr;
+        OrderedJson::array bgEventsArr;
         for (int i = 0; i < map->events["bg_event_group"].length(); i++) {
             Event *event = map->events["bg_event_group"].value(i);
             QString event_type = event->get("event_type");
             if (event_type == EventType::Sign) {
-                QJsonObject signObj = event->buildSignEventJSON();
+                OrderedJson::object signObj = event->buildSignEventJSON();
                 bgEventsArr.append(signObj);
             } else if (event_type == EventType::HiddenItem) {
-                QJsonObject hiddenItemObj = event->buildHiddenItemEventJSON();
+                OrderedJson::object hiddenItemObj = event->buildHiddenItemEventJSON();
                 bgEventsArr.append(hiddenItemObj);
             } else if (event_type == EventType::SecretBase) {
-                QJsonObject secretBaseObj = event->buildSecretBaseEventJSON();
+                OrderedJson::object secretBaseObj = event->buildSecretBaseEventJSON();
                 bgEventsArr.append(secretBaseObj);
             } else if (event_type == EventType::FruitTree) {
-                QJsonObject fruitTreeObj = event->buildFruitTreeEventJSON();
+                OrderedJson::object fruitTreeObj = event->buildFruitTreeEventJSON();
                 bgEventsArr.append(fruitTreeObj);
             }
         }
@@ -1314,8 +1554,9 @@ void Project::saveMap(Map *map) {
         mapObj[key] = map->customHeaders[key];
     }
 
-    QJsonDocument mapDoc(mapObj);
-    mapFile.write(mapDoc.toJson());
+    OrderedJson mapJson(mapObj);
+    OrderedJsonDoc jsonDoc(&mapJson);
+    jsonDoc.dump(&mapFile);
     mapFile.close();
 
     saveLayoutBorder(map);
@@ -1353,8 +1594,9 @@ void Project::loadTilesetAssets(Tileset* tileset) {
     if (tileset->name.isNull()) {
         return;
     }
+    QRegularExpression re("([a-z])([A-Z0-9])");
     QString tilesetName = tileset->name;
-    QString dir_path = root + "/data/tilesets/" + category + "/" + tilesetName.replace("gTileset_", "").toLower();
+    QString dir_path = root + "/data/tilesets/" + category + "/" + tilesetName.replace("gTileset_", "").replace(re, "\\1_\\2").toLower();
 
     QList<QStringList> *graphics = parser.parseAsm("data/tilesets/graphics.inc");
     QStringList *tiles_values = parser.getLabelValues(graphics, tileset->tiles_label);
@@ -1410,6 +1652,7 @@ void Project::loadTilesetAssets(Tileset* tileset) {
 
     // palettes
     QList<QList<QRgb>> *palettes = new QList<QList<QRgb>>;
+    QList<QList<QRgb>> *palettePreviews = new QList<QList<QRgb>>;
     for (int i = 0; i < tileset->palettePaths.length(); i++) {
         QList<QRgb> palette;
         QString path = tileset->palettePaths.value(i);
@@ -1444,8 +1687,10 @@ void Project::loadTilesetAssets(Tileset* tileset) {
         }
 
         palettes->append(palette);
+        palettePreviews->append(palette);
     }
     tileset->palettes = palettes;
+    tileset->palettePreviews = palettePreviews;
 }
 
 void Project::loadTilesetTiles(Tileset *tileset, QImage image) {
@@ -1493,16 +1738,43 @@ void Project::loadTilesetMetatiles(Tileset* tileset) {
     if (attrs_file.open(QIODevice::ReadOnly)) {
         QByteArray data = attrs_file.readAll();
         int num_metatiles = tileset->metatiles->count();
-        int num_metatileAttrs = data.length() / 2;
-        if (num_metatiles != num_metatileAttrs) {
-            logWarn(QString("Metatile count %1 does not match metatile attribute count %2 in %3").arg(num_metatiles).arg(num_metatileAttrs).arg(tileset->name));
-            if (num_metatileAttrs > num_metatiles)
-                num_metatileAttrs = num_metatiles;
-        }
-        for (int i = 0; i < num_metatileAttrs; i++) {
-            int value = (static_cast<unsigned char>(data.at(i * 2 + 1)) << 8) | static_cast<unsigned char>(data.at(i * 2));
-            tileset->metatiles->at(i)->behavior = value & 0xFF;
-            tileset->metatiles->at(i)->layerType = (value & 0xF000) >> 12;
+
+        if (projectConfig.getBaseGameVersion() == BaseGameVersion::pokefirered) {
+            int num_metatileAttrs = data.length() / 4;
+            if (num_metatiles != num_metatileAttrs) {
+                logWarn(QString("Metatile count %1 does not match metatile attribute count %2 in %3").arg(num_metatiles).arg(num_metatileAttrs).arg(tileset->name));
+                if (num_metatileAttrs > num_metatiles)
+                    num_metatileAttrs = num_metatiles;
+            }
+            bool unusedAttribute = false;
+            for (int i = 0; i < num_metatileAttrs; i++) {
+                int value = (static_cast<unsigned char>(data.at(i * 4 + 3)) << 24) | 
+                            (static_cast<unsigned char>(data.at(i * 4 + 2)) << 16) | 
+                            (static_cast<unsigned char>(data.at(i * 4 + 1)) << 8) | 
+                            (static_cast<unsigned char>(data.at(i * 4 + 0)));
+                tileset->metatiles->at(i)->behavior = value & 0x1FF;
+                tileset->metatiles->at(i)->terrainType = (value & 0x3E00) >> 9;
+                tileset->metatiles->at(i)->encounterType = (value & 0x7000000) >> 24;
+                tileset->metatiles->at(i)->layerType = (value & 0x60000000) >> 29;
+                if (value & ~(0x67003FFF))
+                    unusedAttribute = true;
+            }
+            if (unusedAttribute)
+                logWarn(QString("Unrecognized metatile attributes in %1 will not be saved.").arg(tileset->metatile_attrs_path));
+        } else {
+            int num_metatileAttrs = data.length() / 2;
+            if (num_metatiles != num_metatileAttrs) {
+                logWarn(QString("Metatile count %1 does not match metatile attribute count %2 in %3").arg(num_metatiles).arg(num_metatileAttrs).arg(tileset->name));
+                if (num_metatileAttrs > num_metatiles)
+                    num_metatileAttrs = num_metatiles;
+            }
+            for (int i = 0; i < num_metatileAttrs; i++) {
+                int value = (static_cast<unsigned char>(data.at(i * 2 + 1)) << 8) | static_cast<unsigned char>(data.at(i * 2));
+                tileset->metatiles->at(i)->behavior = value & 0xFF;
+                tileset->metatiles->at(i)->layerType = (value & 0xF000) >> 12;
+                tileset->metatiles->at(i)->encounterType = 0;
+                tileset->metatiles->at(i)->terrainType = 0;
+            }
         }
     } else {
         logError(QString("Could not open tileset metatile attributes file '%1'").arg(tileset->metatile_attrs_path));
@@ -1543,8 +1815,8 @@ Blockdata* Project::readBlockdata(QString path) {
 }
 
 Map* Project::getMap(QString map_name) {
-    if (map_cache->contains(map_name)) {
-        return map_cache->value(map_name);
+    if (mapCache->contains(map_name)) {
+        return mapCache->value(map_name);
     } else {
         Map *map = loadMap(map_name);
         return map;
@@ -1553,12 +1825,12 @@ Map* Project::getMap(QString map_name) {
 
 Tileset* Project::getTileset(QString label, bool forceLoad) {
     Tileset *existingTileset = nullptr;
-    if (tileset_cache->contains(label)) {
-        existingTileset = tileset_cache->value(label);
+    if (tilesetCache->contains(label)) {
+        existingTileset = tilesetCache->value(label);
     }
 
     if (existingTileset && !forceLoad) {
-        return tileset_cache->value(label);
+        return tilesetCache->value(label);
     } else {
         Tileset *tileset = loadTileset(label, existingTileset);
         return tileset;
@@ -1600,6 +1872,7 @@ bool Project::readWildMonData() {
     }
 
     QString wildMonJsonFilepath = QString("%1/src/data/wild_encounters.json").arg(root);
+    fileWatcher.addPath(wildMonJsonFilepath);
     QJsonDocument wildMonsJsonDoc;
     if (!parser.tryParseJsonFile(&wildMonsJsonDoc, wildMonJsonFilepath)) {
         logError(QString("Failed to read wild encounters from %1").arg(wildMonJsonFilepath));
@@ -1611,7 +1884,13 @@ bool Project::readWildMonData() {
     for (auto subObjectRef : wildMonObj["wild_encounter_groups"].toArray()) {
         QJsonObject subObject = subObjectRef.toObject();
         if (!subObject["for_maps"].toBool()) {
-            extraEncounterGroups.insert(subObject["label"].toString(), subObject);
+            QString err;
+            QString subObjson = QJsonDocument(subObject).toJson();
+            OrderedJson::object orderedSubObject = OrderedJson::parse(subObjson, err).object_items();
+            extraEncounterGroups.push_back(orderedSubObject);
+            if (!err.isEmpty()) {
+                logWarn(QString("Encountered a problem while parsing extra encounter groups: %1").arg(err));
+            }
             continue;
         }
 
@@ -1656,7 +1935,7 @@ bool Project::readWildMonData() {
                     }
                 }
             }
-            wildMonData[mapConstant].insert(encounter.toObject().value("base_label").toString(), header);
+            wildMonData[mapConstant].insert({encounter.toObject().value("base_label").toString(), header});
             encounterGroupLabels.append(encounter.toObject().value("base_label").toString());
         }
     }
@@ -1666,9 +1945,10 @@ bool Project::readWildMonData() {
 bool Project::readMapGroups() {
     mapConstantsToMapNames->clear();
     mapNamesToMapConstants->clear();
-    map_groups->clear();
+    mapGroups->clear();
 
     QString mapGroupsFilepath = QString("%1/data/maps/map_groups.json").arg(root);
+    fileWatcher.addPath(mapGroupsFilepath);
     QJsonDocument mapGroupsDoc;
     if (!parser.tryParseJsonFile(&mapGroupsDoc, mapGroupsFilepath)) {
         logError(QString("Failed to read map groups from %1").arg(mapGroupsFilepath));
@@ -1688,7 +1968,7 @@ bool Project::readMapGroups() {
         groups->append(groupName);
         for (int j = 0; j < mapNames.size(); j++) {
             QString mapName = mapNames.at(j).toString();
-            map_groups->insert(mapName, groupIndex);
+            mapGroups->insert(mapName, groupIndex);
             groupedMaps[groupIndex].append(mapName);
             maps->append(mapName);
 
@@ -1712,7 +1992,7 @@ bool Project::readMapGroups() {
 Map* Project::addNewMapToGroup(QString mapName, int groupNum) {
     // Setup new map in memory, but don't write to file until map is actually saved later.
     mapNames->append(mapName);
-    map_groups->insert(mapName, groupNum);
+    mapGroups->insert(mapName, groupNum);
     groupedMapNames[groupNum].append(mapName);
 
     Map *map = new Map;
@@ -1729,14 +2009,14 @@ Map* Project::addNewMapToGroup(QString mapName, int groupNum) {
     setNewMapConnections(map);
     map->commit();
     map->metatileHistory.save();
-    map_cache->insert(mapName, map);
+    mapCache->insert(mapName, map);
 
     return map;
 }
 
 Map* Project::addNewMapToGroup(QString mapName, int groupNum, Map *newMap, bool existingLayout) {
     mapNames->append(mapName);
-    map_groups->insert(mapName, groupNum);
+    mapGroups->insert(mapName, groupNum);
     groupedMapNames[groupNum].append(mapName);
 
     Map *map = new Map;
@@ -1838,7 +2118,9 @@ QMap<QString, QStringList> Project::getTilesetLabels() {
 bool Project::readTilesetProperties() {
     QStringList definePrefixes;
     definePrefixes << "NUM_";
-    QMap<QString, int> defines = parser.readCDefines("include/fieldmap.h", definePrefixes);
+    QString filename = "include/fieldmap.h";
+    fileWatcher.addPath(root + "/" + filename);
+    QMap<QString, int> defines = parser.readCDefines(filename, definePrefixes);
 
     auto it = defines.find("NUM_TILES_IN_PRIMARY");
     if (it != defines.end()) {
@@ -1897,6 +2179,7 @@ bool Project::readRegionMapSections() {
 
     QStringList prefixes = (QStringList() << "MAPSEC_");
     QString filename = "include/constants/region_map_sections.h";
+    fileWatcher.addPath(root + "/" + filename);
     this->mapSectionNameToValue = parser.readCDefines(filename, prefixes);
     if (this->mapSectionNameToValue.isEmpty()) {
         logError(QString("Failed to read region map sections from %1.").arg(filename));
@@ -1911,22 +2194,48 @@ bool Project::readRegionMapSections() {
 
 bool Project::readHealLocations() {
     dataQualifiers.clear();
-    flyableMaps.clear();
-
+    healLocations.clear();
     QString filename = "src/data/heal_locations.h";
+    fileWatcher.addPath(root + "/" + filename);
     QString text = parser.readTextFile(root + "/" + filename);
     text.replace(QRegularExpression("//.*?(\r\n?|\n)|/\\*.*?\\*/", QRegularExpression::DotMatchesEverythingOption), "");
 
-    dataQualifiers.insert("heal_locations", getDataQualifiers(text, "sHealLocations"));
+    if (projectConfig.getBaseGameVersion() == BaseGameVersion::pokefirered) {
+        dataQualifiers.insert("heal_locations", getDataQualifiers(text, "sSpawnPoints"));
+        QRegularExpression spawnRegex("SPAWN_(?<id>[A-Za-z0-9_]+)\\s*- 1\\]\\s* = \\{MAP_GROUP[\\(\\s]+(?<map>[A-Za-z0-9_]+)[\\s\\)]+,\\s*MAP_NUM[\\(\\s]+(\\2)[\\s\\)]+,\\s*(?<x>[0-9A-Fa-fx]+),\\s*(?<y>[0-9A-Fa-fx]+)");
+        QRegularExpression respawnMapRegex("SPAWN_(?<id>[A-Za-z0-9_]+)\\s*- 1\\]\\s* = \\{MAP_GROUP[\\(\\s]+(?<map>[A-Za-z0-9_]+)[\\s\\)]+,\\s*MAP_NUM[\\(\\s]+(\\2)[\\s\\)]+}");
+        QRegularExpression respawnNPCRegex("SPAWN_(?<id>[A-Za-z0-9_]+)\\s*- 1\\]\\s* = (?<npc>[0-9]+)");
+        QRegularExpressionMatchIterator spawns = spawnRegex.globalMatch(text);
+        QRegularExpressionMatchIterator respawnMaps = respawnMapRegex.globalMatch(text);
+        QRegularExpressionMatchIterator respawnNPCs = respawnNPCRegex.globalMatch(text);
 
-    QRegularExpression regex("MAP_GROUP[\\(\\s]+(?<map>[A-Za-z0-9_]+)[\\s\\)]+,\\s*MAP_NUM[\\(\\s]+(\\1)[\\s\\)]+,\\s*(?<x>[0-9A-Fa-fx]+),\\s*(?<y>[0-9A-Fa-fx]+)");
-    QRegularExpressionMatchIterator iter = regex.globalMatch(text);
-    for (int i = 1; iter.hasNext(); i++) {
-        QRegularExpressionMatch match = iter.next();
-        QString mapName = match.captured("map");
-        unsigned x = match.captured("x").toUShort();
-        unsigned y = match.captured("y").toUShort();
-        flyableMaps.append(HealLocation(mapName, i, x, y));
+        // This would be better if idName was used to look up data from the other two arrays
+        // As it is, element total and order needs to be the same in the 3 arrays to work. This should always be true though
+        for (int i = 1; spawns.hasNext(); i++) {
+            QRegularExpressionMatch spawn = spawns.next();
+            QRegularExpressionMatch respawnMap = respawnMaps.next();
+            QRegularExpressionMatch respawnNPC = respawnNPCs.next();
+            QString idName = spawn.captured("id");
+            QString mapName = spawn.captured("map");
+            QString respawnMapName = respawnMap.captured("map");
+            unsigned x = spawn.captured("x").toUShort();
+            unsigned y = spawn.captured("y").toUShort();
+            unsigned npc = respawnNPC.captured("npc").toUShort();
+            healLocations.append(HealLocation(idName, mapName, i, x, y, respawnMapName, npc));
+        }
+    } else {
+        dataQualifiers.insert("heal_locations", getDataQualifiers(text, "sHealLocations"));
+
+        QRegularExpression regex("HEAL_LOCATION_(?<id>[A-Za-z0-9_]+)\\s*- 1\\]\\s* = \\{MAP_GROUP[\\(\\s]+(?<map>[A-Za-z0-9_]+)[\\s\\)]+,\\s*MAP_NUM[\\(\\s]+(\\2)[\\s\\)]+,\\s*(?<x>[0-9A-Fa-fx]+),\\s*(?<y>[0-9A-Fa-fx]+)");
+        QRegularExpressionMatchIterator iter = regex.globalMatch(text);
+        for (int i = 1; iter.hasNext(); i++) {
+            QRegularExpressionMatch match = iter.next();
+            QString idName = match.captured("id");
+            QString mapName = match.captured("map");
+            unsigned x = match.captured("x").toUShort();
+            unsigned y = match.captured("y").toUShort();
+            healLocations.append(HealLocation(idName, mapName, i, x, y));
+        }
     }
     return true;
 }
@@ -1935,6 +2244,7 @@ bool Project::readItemNames() {
     itemNames->clear();
     QStringList prefixes = (QStringList() << "ITEM_");
     QString filename = "include/constants/items.h";
+    fileWatcher.addPath(root + "/" + filename);
     parser.readCDefinesSorted(filename, prefixes, itemNames);
     if (itemNames->isEmpty()) {
         logError(QString("Failed to read item constants from %1").arg(filename));
@@ -1947,6 +2257,7 @@ bool Project::readFlagNames() {
     flagNames->clear();
     QStringList prefixes = (QStringList() << "FLAG_");
     QString filename = "include/constants/flags.h";
+    fileWatcher.addPath(root + "/" + filename);
     parser.readCDefinesSorted(filename, prefixes, flagNames);
     if (flagNames->isEmpty()) {
         logError(QString("Failed to read flag constants from %1").arg(filename));
@@ -1959,6 +2270,7 @@ bool Project::readVarNames() {
     varNames->clear();
     QStringList prefixes = (QStringList() << "VAR_");
     QString filename = "include/constants/vars.h";
+    fileWatcher.addPath(root + "/" + filename);
     parser.readCDefinesSorted(filename, prefixes, varNames);
     if (varNames->isEmpty()) {
         logError(QString("Failed to read var constants from %1").arg(filename));
@@ -1971,6 +2283,7 @@ bool Project::readMovementTypes() {
     movementTypes->clear();
     QStringList prefixes = (QStringList() << "MOVEMENT_TYPE_");
     QString filename = "include/constants/event_object_movement.h";
+    fileWatcher.addPath(root + "/" + filename);
     parser.readCDefinesSorted(filename, prefixes, movementTypes);
     if (movementTypes->isEmpty()) {
         logError(QString("Failed to read movement type constants from %1").arg(filename));
@@ -1981,6 +2294,7 @@ bool Project::readMovementTypes() {
 
 bool Project::readInitialFacingDirections() {
     QString filename = "src/event_object_movement.c";
+    fileWatcher.addPath(root + "/" + filename);
     facingDirections = parser.readNamedIndexCArray(filename, "gInitialMovementTypeFacingDirections");
     if (facingDirections.isEmpty()) {
         logError(QString("Failed to read initial movement type facing directions from %1").arg(filename));
@@ -1993,6 +2307,7 @@ bool Project::readMapTypes() {
     mapTypes->clear();
     QStringList prefixes = (QStringList() << "MAP_TYPE_");    
     QString filename = "include/constants/map_types.h";
+    fileWatcher.addPath(root + "/" + filename);
     parser.readCDefinesSorted(filename, prefixes, mapTypes);
     if (mapTypes->isEmpty()) {
         logError(QString("Failed to read map type constants from %1").arg(filename));
@@ -2005,6 +2320,7 @@ bool Project::readMapBattleScenes() {
     mapBattleScenes->clear();
     QStringList prefixes = (QStringList() << "MAP_BATTLE_SCENE_");
     QString filename = "include/constants/map_types.h";
+    fileWatcher.addPath(root + "/" + filename);
     parser.readCDefinesSorted("include/constants/map_types.h", prefixes, mapBattleScenes);
     if (mapBattleScenes->isEmpty()) {
         logError(QString("Failed to read map battle scene constants from %1").arg(filename));
@@ -2017,6 +2333,7 @@ bool Project::readWeatherNames() {
     weatherNames->clear();
     QStringList prefixes = (QStringList() << "\\bWEATHER_");
     QString filename = "include/constants/weather.h";
+    fileWatcher.addPath(root + "/" + filename);
     parser.readCDefinesSorted(filename, prefixes, weatherNames);
     if (weatherNames->isEmpty()) {
         logError(QString("Failed to read weather constants from %1").arg(filename));
@@ -2029,6 +2346,7 @@ bool Project::readCoordEventWeatherNames() {
     coordEventWeatherNames->clear();
     QStringList prefixes = (QStringList() << "COORD_EVENT_WEATHER_");
     QString filename = "include/constants/weather.h";
+    fileWatcher.addPath(root + "/" + filename);
     parser.readCDefinesSorted(filename, prefixes, coordEventWeatherNames);
     if (coordEventWeatherNames->isEmpty()) {
         logError(QString("Failed to read coord event weather constants from %1").arg(filename));
@@ -2041,6 +2359,7 @@ bool Project::readSecretBaseIds() {
     secretBaseIds->clear();
     QStringList prefixes = (QStringList() << "SECRET_BASE_[A-Za-z0-9_]*_[0-9]+");
     QString filename = "include/constants/secret_bases.h";
+    fileWatcher.addPath(root + "/" + filename);
     parser.readCDefinesSorted(filename, prefixes, secretBaseIds);
     if (secretBaseIds->isEmpty()) {
         logError(QString("Failed to read secret base id constants from %1").arg(filename));
@@ -2077,9 +2396,23 @@ bool Project::readBgEventFacingDirections() {
     bgEventFacingDirections->clear();
     QStringList prefixes = (QStringList() << "BG_EVENT_PLAYER_FACING_");
     QString filename = "include/constants/event_bg.h";
+    fileWatcher.addPath(root + "/" + filename);
     parser.readCDefinesSorted(filename, prefixes, bgEventFacingDirections);
     if (bgEventFacingDirections->isEmpty()) {
         logError(QString("Failed to read bg event facing direction constants from %1").arg(filename));
+        return false;
+    }
+    return true;
+}
+
+bool Project::readTrainerTypes() {
+    trainerTypes->clear();
+    QStringList prefixes = (QStringList() << "TRAINER_TYPE_");
+    QString filename = "include/constants/trainer_types.h";
+    fileWatcher.addPath(root + "/" + filename);
+    parser.readCDefinesSorted(filename, prefixes, trainerTypes);
+    if (trainerTypes->isEmpty()) {
+        logError(QString("Failed to read trainer type constants from %1").arg(filename));
         return false;
     }
     return true;
@@ -2091,9 +2424,10 @@ bool Project::readMetatileBehaviors() {
 
     QStringList prefixes = (QStringList() << "MB_");
     QString filename = "include/constants/metatile_behaviors.h";
+    fileWatcher.addPath(root + "/" + filename);
     this->metatileBehaviorMap = parser.readCDefines(filename, prefixes);
     if (this->metatileBehaviorMap.isEmpty()) {
-        logError(QString("Failed to metatile behaviors from %1.").arg(filename));
+        logError(QString("Failed to read metatile behaviors from %1.").arg(filename));
         return false;
     }
 
@@ -2106,8 +2440,11 @@ bool Project::readMetatileBehaviors() {
 QStringList Project::getSongNames() {
     QStringList songDefinePrefixes;
     songDefinePrefixes << "SE_" << "MUS_";
-    QMap<QString, int> songDefines = parser.readCDefines("include/constants/songs.h", songDefinePrefixes);
+    QString filename = "include/constants/songs.h";
+    fileWatcher.addPath(root + "/" + filename);
+    QMap<QString, int> songDefines = parser.readCDefines(filename, songDefinePrefixes);
     QStringList names = songDefines.keys();
+    this->defaultSong = names.value(0, "MUS_DUMMY");
 
     return names;
 }
@@ -2116,7 +2453,9 @@ QMap<QString, int> Project::getEventObjGfxConstants() {
     QStringList eventObjGfxPrefixes;
     eventObjGfxPrefixes << "OBJ_EVENT_GFX_";
 
-    QMap<QString, int> constants = parser.readCDefines("include/constants/event_objects.h", eventObjGfxPrefixes);
+    QString filename = "include/constants/event_objects.h";
+    fileWatcher.addPath(root + "/" + filename);
+    QMap<QString, int> constants = parser.readCDefines(filename, eventObjGfxPrefixes);
 
     return constants;
 }
@@ -2124,7 +2463,9 @@ QMap<QString, int> Project::getEventObjGfxConstants() {
 bool Project::readMiscellaneousConstants() {
     miscConstants.clear();
     if (projectConfig.getEncounterJsonActive()) {
-        QMap<QString, int> pokemonDefines = parser.readCDefines("include/constants/pokemon.h", QStringList() << "MIN_" << "MAX_");
+        QString filename = "include/constants/pokemon.h";
+        fileWatcher.addPath(root + "/" + filename);
+        QMap<QString, int> pokemonDefines = parser.readCDefines(filename, QStringList() << "MIN_" << "MAX_");
         miscConstants.insert("max_level_define", pokemonDefines.value("MAX_LEVEL") > pokemonDefines.value("MIN_LEVEL") ? pokemonDefines.value("MAX_LEVEL") : 100);
         miscConstants.insert("min_level_define", pokemonDefines.value("MIN_LEVEL") < pokemonDefines.value("MAX_LEVEL") ? pokemonDefines.value("MIN_LEVEL") : 1);
     }
@@ -2171,6 +2512,11 @@ void Project::loadEventPixmaps(QList<Event*> objects) {
 
     QMap<QString, int> constants = getEventObjGfxConstants();
 
+    fileWatcher.addPaths(QStringList() << root + "/" + "src/data/object_events/object_event_graphics_info_pointers.h"
+                                       << root + "/" + "src/data/object_events/object_event_graphics_info.h"
+                                       << root + "/" + "src/data/object_events/object_event_pic_tables.h"
+                                       << root + "/" + "src/data/object_events/object_event_graphics.h");
+
     QMap<QString, QString> pointerHash = parser.readNamedIndexCArray("src/data/object_events/object_event_graphics_info_pointers.h", "gObjectEventGraphicsInfoPointers");
 
     for (Event *object : objects) {
@@ -2209,16 +2555,19 @@ void Project::loadEventPixmaps(QList<Event*> objects) {
                 QImage spritesheet(root + "/" + path);
                 if (!spritesheet.isNull()) {
                     // Infer the sprite dimensions from the OAM labels.
-                    int spriteWidth = spritesheet.width();
-                    int spriteHeight = spritesheet.height();
+                    int spriteWidth, spriteHeight;
                     QRegularExpression re("\\S+_(\\d+)x(\\d+)");
                     QRegularExpressionMatch dimensionMatch = re.match(dimensions_label);
-                    if (dimensionMatch.hasMatch()) {
-                        QRegularExpressionMatch oamTablesMatch = re.match(subsprites_label);
-                        if (oamTablesMatch.hasMatch()) {
-                            spriteWidth = dimensionMatch.captured(1).toInt();
-                            spriteHeight = dimensionMatch.captured(2).toInt();
-                        }
+                    QRegularExpressionMatch oamTablesMatch = re.match(subsprites_label);
+                    if (oamTablesMatch.hasMatch()) {
+                        spriteWidth = oamTablesMatch.captured(1).toInt();
+                        spriteHeight = oamTablesMatch.captured(2).toInt();
+                    } else if (dimensionMatch.hasMatch()) {
+                        spriteWidth = dimensionMatch.captured(1).toInt();
+                        spriteHeight = dimensionMatch.captured(2).toInt();
+                    } else {
+                        spriteWidth = spritesheet.width();
+                        spriteHeight = spritesheet.height();
                     }
                     object->setPixmapFromSpritesheet(spritesheet, spriteWidth, spriteHeight, object->frame, object->hFlip);
                 }
@@ -2229,10 +2578,13 @@ void Project::loadEventPixmaps(QList<Event*> objects) {
 
 bool Project::readSpeciesIconPaths() {
     speciesToIconPath.clear();
-    QString filename = "src/pokemon_icon.c";
-    QMap<QString, QString> monIconNames = parser.readNamedIndexCArray(filename, "gMonIconTable");
+    QString srcfilename = "src/pokemon_icon.c";
+    QString incfilename = "src/data/graphics/pokemon.h";
+    fileWatcher.addPath(root + "/" + srcfilename);
+    fileWatcher.addPath(root + "/" + incfilename);
+    QMap<QString, QString> monIconNames = parser.readNamedIndexCArray(srcfilename, "gMonIconTable");
     for (QString species : monIconNames.keys()) {
-        QString path = parser.readCIncbin("src/data/graphics/pokemon.h", monIconNames.value(species));
+        QString path = parser.readCIncbin(incfilename, monIconNames.value(species));
         speciesToIconPath.insert(species, root + "/" + path.replace("4bpp", "png"));
     }
     return true;
@@ -2243,7 +2595,7 @@ void Project::saveMapHealEvents(Map *map) {
     if (map->events["heal_event_group"].length() > 0) {
         for (Event *healEvent : map->events["heal_event_group"]) {
             HealLocation hl = HealLocation::fromEvent(healEvent);
-            flyableMaps[hl.index - 1] = hl;
+            healLocations[hl.index - 1] = hl;
         }
     }
     saveHealLocationStruct(map);

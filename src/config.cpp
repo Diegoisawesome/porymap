@@ -17,6 +17,7 @@ KeyValueConfigBase::~KeyValueConfigBase() {
 }
 
 void KeyValueConfigBase::load() {
+    reset();
     QFile file(this->getConfigFilepath());
     if (!file.exists()) {
         if (!file.open(QIODevice::WriteOnly)) {
@@ -35,7 +36,7 @@ void KeyValueConfigBase::load() {
     QTextStream in(&file);
     in.setCodec("UTF-8");
     QList<QString> configLines;
-    QRegularExpression re("^(?<key>.+)=(?<value>.+)$");
+    QRegularExpression re("^(?<key>.+)=(?<value>.*)$");
     while (!in.atEnd()) {
         QString line = in.readLine().trimmed();
         int commentIndex = line.indexOf("#");
@@ -126,8 +127,6 @@ void PorymapConfig::parseConfigKeyValue(QString key, QString value) {
         this->windowState = bytesFromString(value);
     } else if (key == "map_splitter_state") {
         this->mapSplitterState = bytesFromString(value);
-    } else if (key == "events_splitter_state") {
-        this->eventsSlpitterState = bytesFromString(value);
     } else if (key == "main_splitter_state") {
         this->mainSplitterState = bytesFromString(value);
     } else if (key == "collision_opacity") {
@@ -156,6 +155,12 @@ void PorymapConfig::parseConfigKeyValue(QString key, QString value) {
         if (!ok) {
             logWarn(QString("Invalid config value for show_cursor_tile: '%1'. Must be 0 or 1.").arg(value));
         }
+    } else if (key == "monitor_files") {
+        bool ok;
+        this->monitorFiles = value.toInt(&ok);
+        if (!ok) {
+            logWarn(QString("Invalid config value for monitor_files: '%1'. Must be 0 or 1.").arg(value));
+        }
     } else if (key == "region_map_dimensions") {
         bool ok1, ok2;
         QStringList dims = value.split("x");
@@ -183,12 +188,12 @@ QMap<QString, QString> PorymapConfig::getKeyValueMap() {
     map.insert("window_geometry", stringFromByteArray(this->windowGeometry));
     map.insert("window_state", stringFromByteArray(this->windowState));
     map.insert("map_splitter_state", stringFromByteArray(this->mapSplitterState));
-    map.insert("events_splitter_state", stringFromByteArray(this->eventsSlpitterState));
     map.insert("main_splitter_state", stringFromByteArray(this->mainSplitterState));
     map.insert("collision_opacity", QString("%1").arg(this->collisionOpacity));
     map.insert("metatiles_zoom", QString("%1").arg(this->metatilesZoom));
     map.insert("show_player_view", this->showPlayerView ? "1" : "0");
     map.insert("show_cursor_tile", this->showCursorTile ? "1" : "0");
+    map.insert("monitor_files", this->monitorFiles ? "1" : "0");
     map.insert("region_map_dimensions", QString("%1x%2").arg(this->regionMapDimensions.width())
                                                         .arg(this->regionMapDimensions.height()));
     map.insert("theme", this->theme);
@@ -232,12 +237,16 @@ void PorymapConfig::setPrettyCursors(bool enabled) {
     this->save();
 }
 
-void PorymapConfig::setGeometry(QByteArray windowGeometry_, QByteArray windowState_, QByteArray mapSplitterState_, 
-                                QByteArray eventsSlpitterState_, QByteArray mainSplitterState_) {
+void PorymapConfig::setMonitorFiles(bool monitor) {
+    this->monitorFiles = monitor;
+    this->save();
+}
+
+void PorymapConfig::setGeometry(QByteArray windowGeometry_, QByteArray windowState_,
+                                QByteArray mapSplitterState_, QByteArray mainSplitterState_) {
     this->windowGeometry = windowGeometry_;
     this->windowState = windowState_;
     this->mapSplitterState = mapSplitterState_;
-    this->eventsSlpitterState = eventsSlpitterState_;
     this->mainSplitterState = mainSplitterState_;
     this->save();
 }
@@ -292,7 +301,6 @@ QMap<QString, QByteArray> PorymapConfig::getGeometry() {
     geometry.insert("window_geometry", this->windowGeometry);
     geometry.insert("window_state", this->windowState);
     geometry.insert("map_splitter_state", this->mapSplitterState);
-    geometry.insert("events_splitter_state", this->eventsSlpitterState);
     geometry.insert("main_splitter_state", this->mainSplitterState);
 
     return geometry;
@@ -314,6 +322,10 @@ bool PorymapConfig::getShowCursorTile() {
     return this->showCursorTile;
 }
 
+bool PorymapConfig::getMonitorFiles() {
+    return this->monitorFiles;
+}
+
 QSize PorymapConfig::getRegionMapDimensions() {
     return this->regionMapDimensions;
 }
@@ -324,11 +336,13 @@ QString PorymapConfig::getTheme() {
 
 const QMap<BaseGameVersion, QString> baseGameVersionMap = {
     {BaseGameVersion::pokeruby, "pokeruby"},
+    {BaseGameVersion::pokefirered, "pokefirered"},
     {BaseGameVersion::pokeemerald, "pokeemerald"},
 };
 
 const QMap<QString, BaseGameVersion> baseGameVersionReverseMap = {
     {"pokeruby", BaseGameVersion::pokeruby},
+    {"pokefirered", BaseGameVersion::pokefirered},
     {"pokeemerald", BaseGameVersion::pokeemerald},
 };
 
@@ -346,7 +360,7 @@ void ProjectConfig::parseConfigKeyValue(QString key, QString value) {
             this->baseGameVersion = baseGameVersionReverseMap.value(baseGameVersion);
         } else {
             this->baseGameVersion = BaseGameVersion::pokeemerald;
-            logWarn(QString("Invalid config value for base_game_version: '%1'. Must be 'pokeruby' or 'pokeemerald'.").arg(value));
+            logWarn(QString("Invalid config value for base_game_version: '%1'. Must be 'pokeruby', 'pokefirered' or 'pokeemerald'.").arg(value));
         }
     } else if (key == "use_encounter_json") {
         bool ok;
@@ -366,6 +380,15 @@ void ProjectConfig::parseConfigKeyValue(QString key, QString value) {
         if (!ok) {
             logWarn(QString("Invalid config value for use_custom_border_size: '%1'. Must be 0 or 1.").arg(value));
         }
+    } else if (key == "custom_scripts") {
+        this->customScripts.clear();
+        QList<QString> paths = value.split(",");
+        paths.removeDuplicates();
+        for (QString script : paths) {
+            if (!script.isEmpty()) {
+                this->customScripts.append(script);
+            }
+        }
     } else {
         logWarn(QString("Invalid config key found in config file %1: '%2'").arg(this->getConfigFilepath()).arg(key));
     }
@@ -377,6 +400,7 @@ QMap<QString, QString> ProjectConfig::getKeyValueMap() {
     map.insert("use_encounter_json", QString::number(this->useEncounterJson));
     map.insert("use_poryscript", QString::number(this->usePoryScript));
     map.insert("use_custom_border_size", QString::number(this->useCustomBorderSize));
+    map.insert("custom_scripts", this->customScripts.join(","));
     return map;
 }
 
@@ -394,6 +418,7 @@ void ProjectConfig::onNewConfigFileCreated() {
 
         QComboBox *baseGameVersionComboBox = new QComboBox();
         baseGameVersionComboBox->addItem("pokeruby", BaseGameVersion::pokeruby);
+        baseGameVersionComboBox->addItem("pokefirered", BaseGameVersion::pokefirered);
         baseGameVersionComboBox->addItem("pokeemerald", BaseGameVersion::pokeemerald);
         form.addRow(new QLabel("Game Version"), baseGameVersionComboBox);
 
@@ -408,10 +433,15 @@ void ProjectConfig::onNewConfigFileCreated() {
     this->useCustomBorderSize = this->baseGameVersion == BaseGameVersion::pokefirered;
     this->useEncounterJson = true;
     this->usePoryScript = false;
+    this->customScripts.clear();
 }
 
 void ProjectConfig::setProjectDir(QString projectDir) {
     this->projectDir = projectDir;
+}
+
+QString ProjectConfig::getProjectDir() {
+    return this->projectDir;
 }
 
 void ProjectConfig::setBaseGameVersion(BaseGameVersion baseGameVersion) {
@@ -448,4 +478,13 @@ void ProjectConfig::setUseCustomBorderSize(bool enable) {
 
 bool ProjectConfig::getUseCustomBorderSize() {
     return this->useCustomBorderSize;
+}
+
+void ProjectConfig::setCustomScripts(QList<QString> scripts) {
+    this->customScripts = scripts;
+    this->save();
+}
+
+QList<QString> ProjectConfig::getCustomScripts() {
+    return this->customScripts;
 }

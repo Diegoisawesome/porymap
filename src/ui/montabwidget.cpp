@@ -30,6 +30,7 @@ void MonTabWidget::populate() {
         table->setEditTriggers(QAbstractItemView::NoEditTriggers);
         table->setFocusPolicy(Qt::NoFocus);
         table->setSelectionMode(QAbstractItemView::NoSelection);
+        table->setTabKeyNavigation(false);
         table->clearFocus();
         addTab(table, field.name);
     }
@@ -47,6 +48,7 @@ void MonTabWidget::askActivateTab(int tabIndex, QPoint menuPos) {
         populateTab(tabIndex, editor->current_time_index, getDefaultMonInfo(editor->project->wildMonFields.at(tabIndex), editor->project->timesOfDay->count()), tabText);
         editor->saveEncounterTabData();
         setCurrentIndex(tabIndex);
+        emit editor->wildMonDataChanged();
     });
     contextMenu.addAction(&actionActivateTab);
     contextMenu.exec(mapToGlobal(menuPos));
@@ -96,6 +98,7 @@ void MonTabWidget::populateTab(int tabIndex, int timeOfDay, WildMonInfo monInfo,
     encounterRate->setValue(monInfo.encounterRate);
     connect(encounterRate, QOverload<int>::of(&QSpinBox::valueChanged), [this](int) {
         editor->saveEncounterTabData();
+        emit editor->wildMonDataChanged();
     });
     encounterLayout->addWidget(encounterRate);
     encounterFrame->setLayout(encounterLayout);
@@ -125,6 +128,7 @@ void MonTabWidget::createSpeciesTableRow(QTableWidget *table, WildPokemon mon, i
     QObject::connect(monSelector, &QComboBox::currentTextChanged, [=](QString newSpecies) {
         QPixmap monIcon = QPixmap(editor->project->speciesToIconPath.value(newSpecies)).copy(0, 0, 32, 32);
         monLabel->setPixmap(monIcon);
+        emit editor->wildMonDataChanged();
         if (!monIcon.isNull()) editor->saveEncounterTabData();
     });
 
@@ -141,10 +145,12 @@ void MonTabWidget::createSpeciesTableRow(QTableWidget *table, WildPokemon mon, i
     connect(minLevel, QOverload<int>::of(&QSpinBox::valueChanged), [maxLevel, this](int min) {
         maxLevel->setMinimum(min);
         editor->saveEncounterTabData();
+        emit editor->wildMonDataChanged();
     });
 
     connect(maxLevel, QOverload<int>::of(&QSpinBox::valueChanged), [maxLevel, this](int) {
         editor->saveEncounterTabData();
+        emit editor->wildMonDataChanged();
     });
 
     int fieldIndex = 0;

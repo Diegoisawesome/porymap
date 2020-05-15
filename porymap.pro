@@ -4,13 +4,13 @@
 #
 #-------------------------------------------------
 
-QT       += core gui
+QT       += core gui qml
 
 greaterThan(QT_MAJOR_VERSION, 4): QT += widgets
 
 TARGET = porymap
 TEMPLATE = app
-RC_ICONS = resources/icons/porymap-icon-1.ico
+RC_ICONS = resources/icons/porymap-icon-2.ico
 ICON = resources/icons/porymap.icns
 QMAKE_CXXFLAGS += -std=c++11 -Wall
 
@@ -30,11 +30,14 @@ SOURCES += src/core/block.cpp \
     src/core/tileset.cpp \
     src/core/regionmap.cpp \
     src/core/wildmoninfo.cpp \
+    src/lib/orderedjson.cpp \
+    src/mainwindow_scriptapi.cpp \
     src/ui/aboutporymap.cpp \
     src/ui/bordermetatilespixmapitem.cpp \
     src/ui/collisionpixmapitem.cpp \
     src/ui/connectionpixmapitem.cpp \
     src/ui/currentselectedmetatilespixmapitem.cpp \
+    src/ui/overlay.cpp \
     src/ui/regionmaplayoutpixmapitem.cpp \
     src/ui/regionmapentriespixmapitem.cpp \
     src/ui/cursortilerect.cpp \
@@ -69,6 +72,7 @@ SOURCES += src/core/block.cpp \
     src/main.cpp \
     src/mainwindow.cpp \
     src/project.cpp \
+    src/scripting.cpp \
     src/settings.cpp \
     src/log.cpp \
     src/ui/newtilesetdialog.cpp
@@ -91,7 +95,9 @@ HEADERS  += include/core/block.h \
     include/core/tileset.h \
     include/core/regionmap.h \
     include/core/wildmoninfo.h \
-    include/ui/aboutporymap.h \    
+    include/lib/orderedmap.h \
+    include/lib/orderedjson.h \
+    include/ui/aboutporymap.h \
     include/ui/bordermetatilespixmapitem.h \
     include/ui/collisionpixmapitem.h \
     include/ui/connectionpixmapitem.h \
@@ -116,6 +122,7 @@ HEADERS  += include/core/block.h \
     include/ui/noscrollcombobox.h \
     include/ui/noscrollspinbox.h \
     include/ui/montabwidget.h \
+    include/ui/adjustingstackedwidget.h \
     include/ui/paletteeditor.h \
     include/ui/selectablepixmapitem.h \
     include/ui/tileseteditor.h \
@@ -129,9 +136,11 @@ HEADERS  += include/core/block.h \
     include/editor.h \
     include/mainwindow.h \
     include/project.h \
+    include/scripting.h \
     include/settings.h \
     include/log.h \
-    include/ui/newtilesetdialog.h
+    include/ui/newtilesetdialog.h \
+    include/ui/overlay.h
 
 FORMS    += forms/mainwindow.ui \
     forms/eventpropertiesframe.ui \
@@ -150,3 +159,4 @@ RESOURCES += \
 INCLUDEPATH += include
 INCLUDEPATH += include/core
 INCLUDEPATH += include/ui
+INCLUDEPATH += include/lib

@@ -17,9 +17,9 @@
 #define DEFAULT_BORDER_WIDTH 2
 #define DEFAULT_BORDER_HEIGHT 2
 
-// Number of border blocks to draw out from edge of map. Could allow modification of this in the future.
+// Number of metatiles to draw out from edge of map. Could allow modification of this in the future.
 // porymap will reflect changes to it, but the value is hard-coded in the projects at the moment
-#define NUM_BORDER_BLOCKS 3
+#define BORDER_DISTANCE 7
 
 class Map : public QObject
 {
@@ -75,8 +75,7 @@ public:
     void cacheBlockdata();
     void cacheCollision();
     Block *getBlock(int x, int y);
-    void setBlock(int x, int y, Block block);
-    void _setBlock(int x, int y, Block block);
+    void setBlock(int x, int y, Block block, bool enableScriptCallback = false);
     void floodFillCollisionElevation(int x, int y, uint16_t collision, uint16_t elevation);
     void _floodFillCollisionElevation(int x, int y, uint16_t collision, uint16_t elevation);
     void magicFillCollisionElevation(int x, int y, uint16_t collision, uint16_t elevation);
@@ -87,7 +86,7 @@ public:
     void removeEvent(Event*);
     void addEvent(Event*);
     QPixmap renderConnection(MapConnection, MapLayout *);
-    QPixmap renderBorder();
+    QPixmap renderBorder(bool ignoreCache = false);
     void setDimensions(int newWidth, int newHeight, bool setNewBlockdata = true);
     void setBorderDimensions(int newWidth, int newHeight, bool setNewBlockdata = true);
     void cacheBorder();
