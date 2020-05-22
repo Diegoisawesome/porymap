@@ -33,8 +33,10 @@ Event* Event::createNewEvent(QString event_type, QString map_name, Project *proj
     Event *event = new Event;
     if (event_type == EventType::Object) {
         event = createNewObjectEvent(project);
+        event->setFrameFromMovement(event->get("movement_type"));
     } else if (event_type == EventType::ObjectClone) {
         event = createNewObjectCloneEvent(map_name);
+        event->setFrameFromMovement(event->get("movement_type"));
     } else if (event_type == EventType::Warp) {
         event = createNewWarpEvent(map_name);
     } else if (event_type == EventType::HealLocation) {
