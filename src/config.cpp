@@ -56,6 +56,7 @@ void KeyValueConfigBase::load() {
 
         this->parseConfigKeyValue(match.captured("key").toLower(), match.captured("value"));
     }
+    this->setUnreadKeys();
 
     file.close();
 }
@@ -380,6 +381,60 @@ void ProjectConfig::parseConfigKeyValue(QString key, QString value) {
         if (!ok) {
             logWarn(QString("Invalid config value for use_custom_border_size: '%1'. Must be 0 or 1.").arg(value));
         }
+    } else if (key == "enable_event_weather_trigger") {
+        bool ok;
+        this->enableEventWeatherTrigger = value.toInt(&ok);
+        if (!ok) {
+            logWarn(QString("Invalid config value for enable_event_weather_trigger: '%1'. Must be 0 or 1.").arg(value));
+        }
+    } else if (key == "enable_event_secret_base") {
+        bool ok;
+        this->enableEventSecretBase = value.toInt(&ok);
+        if (!ok) {
+            logWarn(QString("Invalid config value for enable_event_secret_base: '%1'. Must be 0 or 1.").arg(value));
+        }
+    } else if (key == "enable_hidden_item_quantity") {
+        bool ok;
+        this->enableHiddenItemQuantity = value.toInt(&ok);
+        if (!ok) {
+            logWarn(QString("Invalid config value for enable_hidden_item_quantity: '%1'. Must be 0 or 1.").arg(value));
+        }
+    } else if (key == "enable_hidden_item_requires_itemfinder") {
+        bool ok;
+        this->enableHiddenItemRequiresItemfinder = value.toInt(&ok);
+        if (!ok) {
+            logWarn(QString("Invalid config value for enable_hidden_item_requires_itemfinder: '%1'. Must be 0 or 1.").arg(value));
+        }
+    } else if (key == "enable_heal_location_respawn_data") {
+        bool ok;
+        this->enableHealLocationRespawnData = value.toInt(&ok);
+        if (!ok) {
+            logWarn(QString("Invalid config value for enable_heal_location_respawn_data: '%1'. Must be 0 or 1.").arg(value));
+        }
+    } else if (key == "enable_object_event_in_connection") {
+        bool ok;
+        this->enableObjectEventInConnection = value.toInt(&ok);
+        if (!ok) {
+            logWarn(QString("Invalid config value for enable_object_event_in_connection: '%1'. Must be 0 or 1.").arg(value));
+        }
+    } else if (key == "enable_floor_number") {
+        bool ok;
+        this->enableFloorNumber = value.toInt(&ok);
+        if (!ok) {
+            logWarn(QString("Invalid config value for enable_floor_number: '%1'. Must be 0 or 1.").arg(value));
+        }
+    } else if (key == "enable_phone_service") {
+        bool ok;
+        this->enablePhoneService = value.toInt(&ok);
+        if (!ok) {
+            logWarn(QString("Invalid config value for enable_phone_service: '%1'. Must be 0 or 1.").arg(value));
+        }
+    } else if (key == "enable_event_fruit_tree") {
+        bool ok;
+        this->enableEventFruitTree = value.toInt(&ok);
+        if (!ok) {
+            logWarn(QString("Invalid config value for enable_event_fruit_tree: '%1'. Must be 0 or 1.").arg(value));
+        }
     } else if (key == "custom_scripts") {
         this->customScripts.clear();
         QList<QString> paths = value.split(",");
@@ -392,6 +447,22 @@ void ProjectConfig::parseConfigKeyValue(QString key, QString value) {
     } else {
         logWarn(QString("Invalid config key found in config file %1: '%2'").arg(this->getConfigFilepath()).arg(key));
     }
+    readKeys.append(key);
+}
+
+void ProjectConfig::setUnreadKeys() {
+    // Set game-version specific defaults for any config field that wasn't read
+    bool isPokefirered = this->baseGameVersion == BaseGameVersion::pokefirered;
+    if (!readKeys.contains("use_custom_border_size")) this->useCustomBorderSize = isPokefirered;
+    if (!readKeys.contains("enable_event_weather_trigger")) this->enableEventWeatherTrigger = !isPokefirered;
+    if (!readKeys.contains("enable_event_secret_base")) this->enableEventSecretBase = !isPokefirered;
+    if (!readKeys.contains("enable_hidden_item_quantity")) this->enableHiddenItemQuantity = isPokefirered;
+    if (!readKeys.contains("enable_hidden_item_requires_itemfinder")) this->enableHiddenItemRequiresItemfinder = isPokefirered;
+    if (!readKeys.contains("enable_heal_location_respawn_data")) this->enableHealLocationRespawnData = isPokefirered;
+    if (!readKeys.contains("enable_object_event_in_connection")) this->enableObjectEventInConnection = isPokefirered;
+    if (!readKeys.contains("enable_floor_number")) this->enableFloorNumber = isPokefirered;
+    if (!readKeys.contains("enable_phone_service")) this->enablePhoneService = false;
+    if (!readKeys.contains("enable_event_fruit_tree")) this->enableEventFruitTree = false;
 }
 
 QMap<QString, QString> ProjectConfig::getKeyValueMap() {
@@ -400,6 +471,15 @@ QMap<QString, QString> ProjectConfig::getKeyValueMap() {
     map.insert("use_encounter_json", QString::number(this->useEncounterJson));
     map.insert("use_poryscript", QString::number(this->usePoryScript));
     map.insert("use_custom_border_size", QString::number(this->useCustomBorderSize));
+    map.insert("enable_event_weather_trigger", QString::number(this->enableEventWeatherTrigger));
+    map.insert("enable_event_secret_base", QString::number(this->enableEventSecretBase));
+    map.insert("enable_hidden_item_quantity", QString::number(this->enableHiddenItemQuantity));
+    map.insert("enable_hidden_item_requires_itemfinder", QString::number(this->enableHiddenItemRequiresItemfinder));
+    map.insert("enable_heal_location_respawn_data", QString::number(this->enableHealLocationRespawnData));
+    map.insert("enable_object_event_in_connection", QString::number(this->enableObjectEventInConnection));
+    map.insert("enable_floor_number", QString::number(this->enableFloorNumber));
+    map.insert("enable_phone_service", QString::number(this->enablePhoneService));
+    map.insert("enable_event_fruit_tree", QString::number(this->enableEventFruitTree));
     map.insert("custom_scripts", this->customScripts.join(","));
     return map;
 }
@@ -430,7 +510,15 @@ void ProjectConfig::onNewConfigFileCreated() {
             this->baseGameVersion = static_cast<BaseGameVersion>(baseGameVersionComboBox->currentData().toInt());
         }
     }
-    this->useCustomBorderSize = this->baseGameVersion == BaseGameVersion::pokefirered;
+    bool isPokefirered = this->baseGameVersion == BaseGameVersion::pokefirered;
+    this->useCustomBorderSize = isPokefirered;
+    this->enableEventWeatherTrigger = !isPokefirered;
+    this->enableEventSecretBase = !isPokefirered;
+    this->enableHiddenItemQuantity = isPokefirered;
+    this->enableHiddenItemRequiresItemfinder = isPokefirered;
+    this->enableHealLocationRespawnData = isPokefirered;
+    this->enableObjectEventInConnection = isPokefirered;
+    this->enableFloorNumber = isPokefirered;
     this->useEncounterJson = true;
     this->usePoryScript = false;
     this->customScripts.clear();
@@ -478,6 +566,87 @@ void ProjectConfig::setUseCustomBorderSize(bool enable) {
 
 bool ProjectConfig::getUseCustomBorderSize() {
     return this->useCustomBorderSize;
+}
+
+void ProjectConfig::setEventWeatherTriggerEnabled(bool enable) {
+    this->enableEventWeatherTrigger = enable;
+    this->save();
+}
+
+bool ProjectConfig::getEventWeatherTriggerEnabled() {
+    return this->enableEventWeatherTrigger;
+}
+
+void ProjectConfig::setEventSecretBaseEnabled(bool enable) {
+    this->enableEventSecretBase = enable;
+    this->save();
+}
+
+bool ProjectConfig::getEventSecretBaseEnabled() {
+    return this->enableEventSecretBase;
+}
+
+void ProjectConfig::setEventFruitTreeEnabled(bool enable) {
+    this->enableEventFruitTree = enable;
+    this->save();
+}
+
+bool ProjectConfig::getEventFruitTreeEnabled() {
+    return this->enableEventFruitTree;
+}
+
+void ProjectConfig::setHiddenItemQuantityEnabled(bool enable) {
+    this->enableHiddenItemQuantity = enable;
+    this->save();
+}
+
+bool ProjectConfig::getHiddenItemQuantityEnabled() {
+    return this->enableHiddenItemQuantity;
+}
+
+void ProjectConfig::setHiddenItemRequiresItemfinderEnabled(bool enable) {
+    this->enableHiddenItemRequiresItemfinder = enable;
+    this->save();
+}
+
+bool ProjectConfig::getHiddenItemRequiresItemfinderEnabled() {
+    return this->enableHiddenItemRequiresItemfinder;
+}
+
+void ProjectConfig::setHealLocationRespawnDataEnabled(bool enable) {
+    this->enableHealLocationRespawnData = enable;
+    this->save();
+}
+
+bool ProjectConfig::getHealLocationRespawnDataEnabled() {
+    return this->enableHealLocationRespawnData;
+}
+
+void ProjectConfig::setObjectEventInConnectionEnabled(bool enable) {
+    this->enableObjectEventInConnection = enable;
+    this->save();
+}
+
+bool ProjectConfig::getObjectEventInConnectionEnabled() {
+    return this->enableObjectEventInConnection;
+}
+
+void ProjectConfig::setFloorNumberEnabled(bool enable) {
+    this->enableFloorNumber = enable;
+    this->save();
+}
+
+bool ProjectConfig::getFloorNumberEnabled() {
+    return this->enableFloorNumber;
+}
+
+void ProjectConfig::setPhoneServiceEnabled(bool enable) {
+    this->enablePhoneService = enable;
+    this->save();
+}
+
+bool ProjectConfig::getPhoneServiceEnabled() {
+    return this->enablePhoneService;
 }
 
 void ProjectConfig::setCustomScripts(QList<QString> scripts) {

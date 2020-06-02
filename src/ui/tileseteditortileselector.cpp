@@ -136,15 +136,6 @@ void TilesetEditorTileSelector::setExternalSelection(int width, int height, QLis
         this->externalSelectedTiles.append(tiles.at(i));
     }
 
-    if (width == 1 && height == 1) {
-        QPoint pos = getTileCoords(static_cast<uint16_t>(tiles[0].tile));
-        this->selectionInitialX = pos.x();
-        this->selectionInitialY = pos.y();
-        this->selectionOffsetX = 0;
-        this->selectionOffsetY = 0;
-        this->updateSelection(pos.x(), pos.y());
-    }
-
     this->draw();
     emit selectedTilesChanged();
 }

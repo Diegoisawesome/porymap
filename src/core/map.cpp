@@ -85,7 +85,7 @@ bool Map::mapBlockChanged(int i, Blockdata * cache) {
     return layout->blockdata->blocks->value(i) != cache->blocks->value(i);
 }
 
-bool Map::borderBlockChanged(int i, Blockdata *cache) {
+bool Map::borderBlockChanged(int i, Blockdata * cache) {
     if (!cache)
         return true;
     if (!layout->border)
@@ -416,7 +416,6 @@ void Map::undo() {
     HistoryItem *commit = metatileHistory.back();
     if (!commit)
         return;
-
 
     if (layout->blockdata) {
         layout->blockdata->copyFrom(commit->metatiles);

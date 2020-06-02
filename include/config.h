@@ -24,6 +24,7 @@ protected:
     virtual void parseConfigKeyValue(QString key, QString value) = 0;
     virtual QMap<QString, QString> getKeyValueMap() = 0;
     virtual void onNewConfigFileCreated() = 0;
+    virtual void setUnreadKeys() = 0;
 };
 
 class PorymapConfig: public KeyValueConfigBase
@@ -73,7 +74,8 @@ protected:
     virtual QString getConfigFilepath() override;
     virtual void parseConfigKeyValue(QString key, QString value) override;
     virtual QMap<QString, QString> getKeyValueMap() override;
-    virtual void onNewConfigFileCreated() override {}
+    virtual void onNewConfigFileCreated() override {};
+    virtual void setUnreadKeys() override {};
 private:
     QString recentProject;
     QString recentMap;
@@ -113,7 +115,15 @@ public:
         this->baseGameVersion = BaseGameVersion::pokeemerald;
         this->useEncounterJson = true;
         this->useCustomBorderSize = false;
+        this->enableEventWeatherTrigger = true;
+        this->enableEventSecretBase = true;
+        this->enableHiddenItemQuantity = false;
+        this->enableHiddenItemRequiresItemfinder = false;
+        this->enableHealLocationRespawnData = false;
+        this->enableObjectEventInConnection = false;
+        this->enableFloorNumber = false;
         this->customScripts.clear();
+        this->readKeys.clear();
     }
     void setBaseGameVersion(BaseGameVersion baseGameVersion);
     BaseGameVersion getBaseGameVersion();
@@ -125,6 +135,24 @@ public:
     QString getProjectDir();
     void setUseCustomBorderSize(bool enable);
     bool getUseCustomBorderSize();
+    void setEventWeatherTriggerEnabled(bool enable);
+    bool getEventWeatherTriggerEnabled();
+    void setEventSecretBaseEnabled(bool enable);
+    bool getEventSecretBaseEnabled();
+    void setEventFruitTreeEnabled(bool enable);
+    bool getEventFruitTreeEnabled();
+    void setHiddenItemQuantityEnabled(bool enable);
+    bool getHiddenItemQuantityEnabled();
+    void setHiddenItemRequiresItemfinderEnabled(bool enable);
+    bool getHiddenItemRequiresItemfinderEnabled();
+    void setHealLocationRespawnDataEnabled(bool enable);
+    bool getHealLocationRespawnDataEnabled();
+    void setObjectEventInConnectionEnabled(bool enable);
+    bool getObjectEventInConnectionEnabled();
+    void setFloorNumberEnabled(bool enable);
+    bool getFloorNumberEnabled();
+    void setPhoneServiceEnabled(bool enable);
+    bool getPhoneServiceEnabled();
     void setCustomScripts(QList<QString> scripts);
     QList<QString> getCustomScripts();
 protected:
@@ -132,13 +160,24 @@ protected:
     virtual void parseConfigKeyValue(QString key, QString value) override;
     virtual QMap<QString, QString> getKeyValueMap() override;
     virtual void onNewConfigFileCreated() override;
+    virtual void setUnreadKeys() override;
 private:
     BaseGameVersion baseGameVersion;
     QString projectDir;
     bool useEncounterJson;
     bool usePoryScript;
     bool useCustomBorderSize;
+    bool enableEventWeatherTrigger;
+    bool enableEventSecretBase;
+    bool enableEventFruitTree;
+    bool enableHiddenItemQuantity;
+    bool enableHiddenItemRequiresItemfinder;
+    bool enableHealLocationRespawnData;
+    bool enableObjectEventInConnection;
+    bool enableFloorNumber;
+    bool enablePhoneService;
     QList<QString> customScripts;
+    QStringList readKeys;
 };
 
 extern ProjectConfig projectConfig;

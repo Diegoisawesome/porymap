@@ -180,85 +180,40 @@ void Project::setNewMapConnections(Map *map) {
     map->connections.clear();
 }
 
+static QMap<QString, bool> defaultTopLevelMapFields {
+    {"id", true},
+    {"name", true},
+    {"layout", true},
+    {"music", true},
+    {"region_map_section", true},
+    {"requires_flash", true},
+    {"weather", true},
+    {"map_type", true},
+    {"show_map_name", true},
+    {"battle_scene", true},
+    {"connections", true},
+    {"object_events", true},
+    {"warp_events", true},
+    {"coord_events", true},
+    {"bg_events", true},
+    {"shared_events_map", true},
+    {"shared_scripts_map", true},
+};
+
 QMap<QString, bool> Project::getTopLevelMapFields() {
-    if (projectConfig.getBaseGameVersion() == BaseGameVersion::pokeemerald) {
-        return QMap<QString, bool>
-        {
-            {"id", true},
-            {"name", true},
-            {"layout", true},
-            {"music", true},
-            {"region_map_section", true},
-            {"requires_flash", true},
-            {"weather", true},
-            {"map_type", true},
-            {"allow_cycling", true},
-            {"allow_escaping", true},
-            {"allow_running", true},
-            {"phone_service", true},
-            {"show_map_name", true},
-            {"floor_number", true},
-            {"battle_scene", true},
-            {"connections", true},
-            {"object_events", true},
-            {"warp_events", true},
-            {"coord_events", true},
-            {"bg_events", true},
-            {"shared_events_map", true},
-            {"shared_scripts_map", true},
-        };
-    } else if (projectConfig.getBaseGameVersion() == BaseGameVersion::pokefirered) {
-        return QMap<QString, bool>
-        {
-            {"id", true},
-            {"name", true},
-            {"layout", true},
-            {"music", true},
-            {"region_map_section", true},
-            {"requires_flash", true},
-            {"weather", true},
-            {"map_type", true},
-            {"allow_cycling", true},
-            {"allow_escaping", true},
-            {"allow_running", true},
-            {"phone_service", true},
-            {"floor_number", true},
-            {"show_map_name", true},
-            {"floor_number", true},
-            {"battle_scene", true},
-            {"connections", true},
-            {"object_events", true},
-            {"warp_events", true},
-            {"coord_events", true},
-            {"bg_events", true},
-            {"shared_events_map", true},
-            {"shared_scripts_map", true},
-        };
-    } else if (projectConfig.getBaseGameVersion() == BaseGameVersion::pokeruby) {
-        return QMap<QString, bool>
-        {
-            {"id", true},
-            {"name", true},
-            {"layout", true},
-            {"music", true},
-            {"region_map_section", true},
-            {"requires_flash", true},
-            {"weather", true},
-            {"map_type", true},
-            {"show_map_name", true},
-            {"battle_scene", true},
-            {"connections", true},
-            {"object_events", true},
-            {"warp_events", true},
-            {"coord_events", true},
-            {"bg_events", true},
-            {"shared_events_map", true},
-            {"shared_scripts_map", true},
-        };
-    } else {
-        logError("Invalid game version");
-        return QMap<QString, bool>();
+    QMap<QString, bool> topLevelMapFields = defaultTopLevelMapFields;
+    if (projectConfig.getBaseGameVersion() != BaseGameVersion::pokeruby) {
+        topLevelMapFields.insert("allow_cycling", true);
+        topLevelMapFields.insert("allow_escaping", true);
+        topLevelMapFields.insert("allow_running", true);
     }
+    if (projectConfig.getFloorNumberEnabled()) {
+        topLevelMapFields.insert("floor_number", true);
+    }
+    if (projectConfig.getPhoneServiceEnabled()) {
+        topLevelMapFields.insert("phone_service", true);
+    }
+    return topLevelMapFields;
 }
 
 bool Project::loadMapData(Map* map) {
@@ -284,17 +239,17 @@ bool Project::loadMapData(Map* map) {
     map->requiresFlash = QString::number(mapObj["requires_flash"].toBool());
     map->show_location = QString::number(mapObj["show_map_name"].toBool());
     map->battle_scene = mapObj["battle_scene"].toString();
-    /*if (projectConfig.getBaseGameVersion() == BaseGameVersion::pokeemerald) {
+    if (projectConfig.getBaseGameVersion() != BaseGameVersion::pokeruby) {
         map->allowBiking = QString::number(mapObj["allow_cycling"].toBool());
         map->allowEscapeRope = QString::number(mapObj["allow_escaping"].toBool());
         map->allowRunning = QString::number(mapObj["allow_running"].toBool());
-    } else if (projectConfig.getBaseGameVersion() == BaseGameVersion::pokefirered) {*/
-        map->allowBiking = QString::number(mapObj["allow_cycling"].toBool());
-        map->allowEscapeRope = QString::number(mapObj["allow_escaping"].toBool());
-        map->allowRunning = QString::number(mapObj["allow_running"].toBool());
-        map->phoneService = QString::number(mapObj["phone_service"].toBool());
+    }
+    if (projectConfig.getFloorNumberEnabled()) {
         map->floorNumber = mapObj["floor_number"].toInt();
-    //}
+    }
+    if (projectConfig.getPhoneServiceEnabled()) {
+        map->phoneService = QString::number(mapObj["phone_service"].toBool());
+    }
     map->sharedEventsMap = mapObj["shared_events_map"].toString();
     map->sharedScriptsMap = mapObj["shared_scripts_map"].toString();
 
@@ -331,9 +286,9 @@ bool Project::loadMapData(Map* map) {
             Event *object = new Event(event, EventType::Object);
             object->put("map_name", map->name);
             object->put("sprite", event["graphics_id"].toString());
-            //if (projectConfig.getBaseGameVersion() == BaseGameVersion::pokefirered) {
+            if (projectConfig.getObjectEventInConnectionEnabled()) {
                 object->put("in_connection", event["in_connection"].toBool());
-            //}
+            }
             object->put("x", QString::number(event["x"].toInt()));
             object->put("y", QString::number(event["y"].toInt()));
             object->put("elevation", QString::number(event["elevation"].toInt()));
@@ -393,7 +348,7 @@ bool Project::loadMapData(Map* map) {
             heal->put("destination_map_name", mapConstantsToMapNames->value(map->name));
             heal->put("event_group_type", "heal_event_group");
             heal->put("event_type", EventType::HealLocation);
-            if (projectConfig.getBaseGameVersion() == BaseGameVersion::pokefirered) {
+            if (projectConfig.getHealLocationRespawnDataEnabled()) {
                 heal->put("respawn_map", mapConstantsToMapNames->value(QString("MAP_" + loc.respawnMap)));
                 heal->put("respawn_npc", loc.respawnNPC);
             }
@@ -456,8 +411,10 @@ bool Project::loadMapData(Map* map) {
             bg->put("elevation", QString::number(event["elevation"].toInt()));
             bg->put("item", event["item"].toString());
             bg->put("flag", event["flag"].toString());
-            if (projectConfig.getBaseGameVersion() == BaseGameVersion::pokefirered) {
+            if (projectConfig.getHiddenItemQuantityEnabled()) {
                 bg->put("quantity", event["quantity"].toInt());
+            }
+            if (projectConfig.getHiddenItemRequiresItemfinderEnabled()) {
                 bg->put("underfoot", event["underfoot"].toBool());
             }
             bg->put("event_group_type", "bg_event_group");
@@ -555,19 +512,17 @@ void Project::setNewMapHeader(Map* map, int mapIndex) {
     map->song = defaultSong;
     if (projectConfig.getBaseGameVersion() == BaseGameVersion::pokeruby) {
         map->show_location = "TRUE";
-    } else if (projectConfig.getBaseGameVersion() == BaseGameVersion::pokeemerald) {
+    } else {
         map->allowBiking = "1";
         map->allowEscapeRope = "0";
         map->allowRunning = "1";
         map->show_location = "1";
+    }
+    if (projectConfig.getFloorNumberEnabled()) {
         map->floorNumber = 0;
+    }
+    if (projectConfig.getPhoneServiceEnabled()) {
         map->phoneService = "1";
-    }  else if (projectConfig.getBaseGameVersion() == BaseGameVersion::pokefirered) {
-        map->allowBiking = "1";
-        map->allowEscapeRope = "0";
-        map->allowRunning = "1";
-        map->show_location = "1";
-        map->floorNumber = 0;
     }
 
     map->battle_scene = mapBattleScenes->value(0, "MAP_BATTLE_SCENE_NORMAL");
@@ -959,7 +914,7 @@ void Project::saveMapConstantsHeader() {
 // and indexes as defines in root + /include/constants/heal_locations.h
 void Project::saveHealLocationStruct(Map *map) {
     QString constantPrefix, arrayName;
-    if (projectConfig.getBaseGameVersion() == BaseGameVersion::pokefirered) {
+    if (projectConfig.getHealLocationRespawnDataEnabled()) {
         constantPrefix = "SPAWN_";
         arrayName = "sSpawnPoints";
     } else {
@@ -1027,7 +982,7 @@ void Project::saveHealLocationStruct(Map *map) {
         }
         i++;
     }
-    if (projectConfig.getBaseGameVersion() == BaseGameVersion::pokefirered) {
+    if (projectConfig.getHealLocationRespawnDataEnabled()) {
         // Save second array (map where player respawns for each heal location)
         data_text += QString("};\n\n%1%2u16 sWhiteoutRespawnHealCenterMapIdxs[][2] =\n{\n")
                         .arg(dataQualifiers.value("heal_locations").isStatic ? "static " : "")
@@ -1082,7 +1037,8 @@ void Project::saveTilesetMetatileLabels(Tileset *primaryTileset, Tileset *second
     QMap<QString, int> defines;
     bool definesFileModified = false;
 
-    defines = parser.readCDefines("include/constants/metatile_labels.h", (QStringList() << "METATILE_"));
+    QString metatileLabelsFilename = "include/constants/metatile_labels.h";
+    defines = parser.readCDefines(metatileLabelsFilename, (QStringList() << "METATILE_"));
 
     // Purge old entries from the file.
     QStringList definesToRemove;
@@ -1153,8 +1109,8 @@ void Project::saveTilesetMetatileLabels(Tileset *primaryTileset, Tileset *second
 
     outputText += "\n#endif // GUARD_METATILE_LABELS_H\n";
 
-
-    saveTextFile(root + "/include/constants/metatile_labels.h", outputText);
+    ignoreWatchedFileTemporarily(root + "/" + metatileLabelsFilename);
+    saveTextFile(root + "/" + metatileLabelsFilename, outputText);
 }
 
 void Project::saveTilesetMetatileAttributes(Tileset *tileset) {
@@ -1457,11 +1413,13 @@ void Project::saveMap(Map *map) {
     mapObj["allow_cycling"] = map->allowBiking.toInt() > 0 || map->allowBiking == "TRUE";
     mapObj["allow_escaping"] = map->allowEscapeRope.toInt() > 0 || map->allowEscapeRope == "TRUE";
     mapObj["allow_running"] = map->allowRunning.toInt() > 0 || map->allowRunning == "TRUE";
-    mapObj["phone_service"] = map->phoneService.toInt() > 0 || map->phoneService == "TRUE";
     mapObj["show_map_name"] = map->show_location.toInt() > 0 || map->show_location == "TRUE";
-    //if (projectConfig.getBaseGameVersion() == BaseGameVersion::pokefirered) {
+    if (projectConfig.getFloorNumberEnabled()) {
         mapObj["floor_number"] = map->floorNumber;
-    //}
+    }
+    if (projectConfig.getPhoneServiceEnabled()) {
+        mapObj["phone_service"] = map->phoneService.toInt() > 0 || map->phoneService == "TRUE";
+    }
     mapObj["battle_scene"] = map->battle_scene;
 
     // Connections
@@ -1785,7 +1743,9 @@ void Project::loadTilesetMetatiles(Tileset* tileset) {
 
 void Project::loadTilesetMetatileLabels(Tileset* tileset) {
     QString tilesetPrefix = QString("METATILE_%1_").arg(QString(tileset->name).replace("gTileset_", ""));
-    QMap<QString, int> labels = parser.readCDefines("include/constants/metatile_labels.h", QStringList() << tilesetPrefix);
+    QString metatileLabelsFilename = "include/constants/metatile_labels.h";
+    fileWatcher.addPath(root + "/" + metatileLabelsFilename);
+    QMap<QString, int> labels = parser.readCDefines(metatileLabelsFilename, QStringList() << tilesetPrefix);
 
     for (QString labelName : labels.keys()) {
         int metatileId = labels[labelName];
@@ -2229,7 +2189,7 @@ bool Project::readHealLocations() {
     QString text = parser.readTextFile(root + "/" + filename);
     text.replace(QRegularExpression("//.*?(\r\n?|\n)|/\\*.*?\\*/", QRegularExpression::DotMatchesEverythingOption), "");
 
-    if (projectConfig.getBaseGameVersion() == BaseGameVersion::pokefirered) {
+    if (projectConfig.getHealLocationRespawnDataEnabled()) {
         dataQualifiers.insert("heal_locations", getDataQualifiers(text, "sSpawnPoints"));
         QRegularExpression spawnRegex("SPAWN_(?<id>[A-Za-z0-9_]+)\\s*- 1\\]\\s* = \\{MAP_GROUP[\\(\\s]+(?<map>[A-Za-z0-9_]+)[\\s\\)]+,\\s*MAP_NUM[\\(\\s]+(\\2)[\\s\\)]+,\\s*(?<x>[0-9A-Fa-fx]+),\\s*(?<y>[0-9A-Fa-fx]+)");
         QRegularExpression respawnMapRegex("SPAWN_(?<id>[A-Za-z0-9_]+)\\s*- 1\\]\\s* = \\{MAP_GROUP[\\(\\s]+(?<map>[A-Za-z0-9_]+)[\\s\\)]+,\\s*MAP_NUM[\\(\\s]+(\\2)[\\s\\)]+}");
@@ -2372,6 +2332,8 @@ bool Project::readWeatherNames() {
 }
 
 bool Project::readCoordEventWeatherNames() {
+    if (!projectConfig.getEventWeatherTriggerEnabled()) return true;
+
     coordEventWeatherNames->clear();
     QStringList prefixes = (QStringList() << "COORD_EVENT_WEATHER_");
     QString filename = "include/constants/weather.h";
@@ -2385,6 +2347,8 @@ bool Project::readCoordEventWeatherNames() {
 }
 
 bool Project::readSecretBaseIds() {
+    if (!projectConfig.getEventSecretBaseEnabled()) return true;
+
     secretBaseIds->clear();
     QStringList prefixes = (QStringList() << "SECRET_BASE_[A-Za-z0-9_]*_[0-9]+");
     QString filename = "include/constants/secret_bases.h";
@@ -2398,6 +2362,8 @@ bool Project::readSecretBaseIds() {
 }
 
 bool Project::readFruitTreeIds() {
+    if (!projectConfig.getEventFruitTreeEnabled()) return true;
+
     fruitTreeIds->clear();
     QStringList prefixes = (QStringList() << "FRUIT_TREE_");
     QString filename = "include/constants/fruit_trees.h";
