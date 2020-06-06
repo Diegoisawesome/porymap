@@ -343,6 +343,7 @@ bool MainWindow::openProject(QString dir) {
         QString open_map = editor->map->name;
         editor->project->fileWatcher.removePaths(editor->project->fileWatcher.files());
         editor->project->clearMapCache();
+        editor->map = nullptr;
         editor->project->clearTilesetCache();
         success = loadDataStructures() && populateMapList() && setMap(open_map, true);
     }
