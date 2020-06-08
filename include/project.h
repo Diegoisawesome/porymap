@@ -223,6 +223,7 @@ private:
 signals:
     void reloadProject();
     void uncheckMonitorFilesAction();
+    void mapCacheCleared();
 };
 
 #endif // PROJECT_H

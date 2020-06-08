@@ -170,6 +170,7 @@ private:
     Event* createNewHiddenItemEvent();
     Event* createNewSecretBaseEvent();
     QString getMovementPermissionText(uint16_t collision, uint16_t elevation);
+    QString getMetatileDisplayMessage(uint16_t metatileId);
 
 private slots:
     void onMapStartPaint(QGraphicsSceneMouseEvent *event, MapPixmapItem *item);

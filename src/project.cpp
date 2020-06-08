@@ -145,6 +145,7 @@ void Project::clearMapCache() {
         Map *map = mapCache->take(mapName);
         if (map) delete map;
     }
+    emit mapCacheCleared();
 }
 
 void Project::clearTilesetCache() {
