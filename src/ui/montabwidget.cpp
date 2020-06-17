@@ -45,7 +45,7 @@ void MonTabWidget::askActivateTab(int tabIndex, QPoint menuPos) {
     QAction actionActivateTab(QString("Add %1 data for this map...").arg(tabText), this);
     connect(&actionActivateTab, &QAction::triggered, [=](){
         clearTableAt(tabIndex);
-        populateTab(tabIndex, editor->current_time_index, getDefaultMonInfo(editor->project->wildMonFields.at(tabIndex), editor->project->timesOfDay->count()), tabText);
+        populateTab(tabIndex, getDefaultMonInfo(editor->project->wildMonFields.at(tabIndex), editor->project->timesOfDay->count()), tabText);
         editor->saveEncounterTabData();
         setCurrentIndex(tabIndex);
         emit editor->wildMonDataChanged();
@@ -62,7 +62,7 @@ void MonTabWidget::clearTableAt(int tabIndex) {
     }
 }
 
-void MonTabWidget::populateTab(int tabIndex, int timeOfDay, WildMonInfo monInfo, QString fieldName) {
+void MonTabWidget::populateTab(int tabIndex, WildMonInfo monInfo, QString fieldName) {
     QTableWidget *speciesTable = tableAt(tabIndex);
 
     int fieldIndex = 0;
@@ -73,11 +73,17 @@ void MonTabWidget::populateTab(int tabIndex, int timeOfDay, WildMonInfo monInfo,
     bool insertGroupLabel = false;
     if (!editor->project->wildMonFields[fieldIndex].groups.isEmpty()) insertGroupLabel = true;
 
-    speciesTable->setRowCount(monInfo.wildPokemon[timeOfDay].size());
-    speciesTable->setColumnCount(insertGroupLabel ? 8 : 7);
+    int rowCount = 0;
+    for (QVector<WildPokemon>& timeMons : monInfo.wildPokemon)
+    {
+        rowCount += timeMons.count();
+    }
+
+    speciesTable->setRowCount(rowCount);
+    speciesTable->setColumnCount(insertGroupLabel ? 9 : 8);
 
     QStringList landMonTableHeaders;
-    landMonTableHeaders << "Slot";
+    landMonTableHeaders << "Time" << "Slot";
     if (insertGroupLabel) landMonTableHeaders << "Group";
     landMonTableHeaders << "Species" << "Min Level" << "Max Level" 
                         << "Encounter Chance" << "Slot Ratio" << "Encounter Rate";
@@ -102,20 +108,27 @@ void MonTabWidget::populateTab(int tabIndex, int timeOfDay, WildMonInfo monInfo,
     });
     encounterLayout->addWidget(encounterRate);
     encounterFrame->setLayout(encounterLayout);
-    speciesTable->setCellWidget(0, insertGroupLabel? 7 : 6, encounterFrame);
+    speciesTable->setCellWidget(0, insertGroupLabel? 8 : 7, encounterFrame);
 
-    int i = 0;
-    for (WildPokemon mon : monInfo.wildPokemon[timeOfDay]) {
-        createSpeciesTableRow(speciesTable, mon, i++, fieldName);
+    int time = 0;
+    for (QVector<WildPokemon>& timeMons : monInfo.wildPokemon)
+    {
+        int i = 0;
+        for (WildPokemon& mon : timeMons)
+        {
+            createSpeciesTableRow(speciesTable, mon, i++, time, fieldName);
+        }
+        time++;
     }
 
     this->setTabActive(tabIndex, true);
 }
 
-void MonTabWidget::createSpeciesTableRow(QTableWidget *table, WildPokemon mon, int index, QString fieldName) {
+void MonTabWidget::createSpeciesTableRow(QTableWidget *table, WildPokemon mon, int index, int time, QString fieldName) {
     QPixmap monIcon = QPixmap(editor->project->speciesToIconPath.value(mon.species)).copy(0, 0, 32, 32);
 
     QLabel *monNum = new QLabel(QString("%1.").arg(QString::number(index)));
+    QLabel *timeOfDay = new QLabel(editor->project->timesOfDay->at(time));
 
     QLabel *monLabel = new QLabel();
     monLabel->setPixmap(monIcon);
@@ -198,9 +211,11 @@ void MonTabWidget::createSpeciesTableRow(QTableWidget *table, WildPokemon mon, i
     maxLevelSpinboxLayout->addWidget(maxLevel);
     maxLevelFrame->setLayout(maxLevelSpinboxLayout);
 
+    int absoluteIndex = (editor->project->wildMonFields[fieldIndex].encounterRates.count() * time) + index;
     bool insertGroupLabel = false;
     if (!editor->project->wildMonFields[fieldIndex].groups.isEmpty()) insertGroupLabel = true;
-    table->setCellWidget(index, 0, monNum);
+    table->setCellWidget(absoluteIndex, 0, timeOfDay);
+    table->setCellWidget(absoluteIndex, 1, monNum);
     if (insertGroupLabel) {
         QString groupName = QString();
         for (QString groupKey : editor->project->wildMonFields[fieldIndex].groups.keys()) {
@@ -210,13 +225,13 @@ void MonTabWidget::createSpeciesTableRow(QTableWidget *table, WildPokemon mon, i
             }
         }
         QLabel *groupNameLabel = new QLabel(groupName);
-        table->setCellWidget(index, 1, groupNameLabel);
+        table->setCellWidget(absoluteIndex, 2, groupNameLabel);
     }
-    table->setCellWidget(index, insertGroupLabel? 2 : 1, speciesSelector);
-    table->setCellWidget(index, insertGroupLabel? 3 : 2, minLevelFrame);
-    table->setCellWidget(index, insertGroupLabel? 4 : 3, maxLevelFrame);
-    table->setCellWidget(index, insertGroupLabel? 5 : 4, percentLabel);
-    table->setCellWidget(index, insertGroupLabel? 6 : 5, ratioLabel);
+    table->setCellWidget(absoluteIndex, insertGroupLabel? 3 : 2, speciesSelector);
+    table->setCellWidget(absoluteIndex, insertGroupLabel? 4 : 3, minLevelFrame);
+    table->setCellWidget(absoluteIndex, insertGroupLabel? 5 : 4, maxLevelFrame);
+    table->setCellWidget(absoluteIndex, insertGroupLabel? 6 : 5, percentLabel);
+    table->setCellWidget(absoluteIndex, insertGroupLabel? 7 : 6, ratioLabel);
 }
 
 QTableWidget *MonTabWidget::tableAt(int tabIndex) {

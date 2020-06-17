@@ -17,10 +17,10 @@ public:
     ~MonTabWidget(){};
 
     void populate();
-    void populateTab(int tabIndex, int timeOfDay, WildMonInfo monInfo, QString fieldName);
+    void populateTab(int tabIndex, WildMonInfo monInfo, QString fieldName);
     void clear();
 
-    void createSpeciesTableRow(QTableWidget *table, WildPokemon mon, int index, QString fieldName);
+    void createSpeciesTableRow(QTableWidget *table, WildPokemon mon, int index, int time, QString fieldName);
 
     void clearTableAt(int index);
 

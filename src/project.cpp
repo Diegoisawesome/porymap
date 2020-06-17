@@ -1219,13 +1219,13 @@ Tileset* Project::loadTileset(QString label, Tileset *tileset) {
     tileset->padding = values->value(2);
     tileset->tiles_label = values->value(3);
     tileset->palettes_label = values->value(4);
-    tileset->metatiles_label = values->value(6);
+    tileset->metatiles_label = values->value(5);
     if (projectConfig.getBaseGameVersion() == BaseGameVersion::pokefirered) {
         tileset->callback_label = values->value(6);
         tileset->metatile_attrs_label = values->value(7);
     } else {
-        tileset->metatile_attrs_label = values->value(7);
-        tileset->callback_label = values->value(8);
+        tileset->metatile_attrs_label = values->value(6);
+        tileset->callback_label = values->value(7);
     }
 
     loadTilesetAssets(tileset);

@@ -2653,20 +2653,6 @@
                    </widget>
                   </item>
                   <item>
-                    <widget class="QLabel" name="label_16">
-                    <property name="text">
-                      <string>Time</string>
-                    </property>
-                    </widget>
-                  </item>
-                  <item>
-                    <widget class="QComboBox" name="comboBox_WildMonTimeOfDay">
-                    <property name="sizeAdjustPolicy">
-                      <enum>QComboBox::AdjustToContents</enum>
-                    </property>
-                    </widget>
-                  </item>
-                  <item>
                    <spacer name="horizontalSpacer_9">
                     <property name="orientation">
                      <enum>Qt::Horizontal</enum>

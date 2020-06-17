@@ -22,19 +22,24 @@ WildMonInfo getDefaultMonInfo(EncounterField field, int timesCount) {
     return newInfo;
 }
 
-WildMonInfo copyMonInfoFromTab(QTableWidget *monTable, EncounterField monField, QVector<QVector<WildPokemon>> mons, int timeOfDay) {
+WildMonInfo copyMonInfoFromTab(QTableWidget *monTable, EncounterField monField, QVector<QVector<WildPokemon>> mons) {
     WildMonInfo newInfo;
-    QVector<WildPokemon> newWildMons;
+    int monsPerTimePeriod = monField.encounterRates.count();
 
     bool extraColumn = !monField.groups.isEmpty();
-    for (int row = 0; row < monTable->rowCount(); row++) {
-        WildPokemon newWildMon;
-        newWildMon.species = monTable->cellWidget(row, extraColumn ? 2 : 1)->findChild<QComboBox *>()->currentText();
-        newWildMon.minLevel = monTable->cellWidget(row, extraColumn ? 3 : 2)->findChild<QSpinBox *>()->value();
-        newWildMon.maxLevel = monTable->cellWidget(row, extraColumn ? 4 : 3)->findChild<QSpinBox *>()->value();
-        newWildMons.append(newWildMon);
+    for (int time = 0; time < mons.count(); time++)
+    {
+        QVector<WildPokemon> newWildMons;
+        for (int row = 0; row < monsPerTimePeriod; row++) {
+            int absoluteRow = row + (monsPerTimePeriod * time);
+            WildPokemon newWildMon;
+            newWildMon.species = monTable->cellWidget(absoluteRow, extraColumn ? 3 : 2)->findChild<QComboBox *>()->currentText();
+            newWildMon.minLevel = monTable->cellWidget(absoluteRow, extraColumn ? 4 : 3)->findChild<QSpinBox *>()->value();
+            newWildMon.maxLevel = monTable->cellWidget(absoluteRow, extraColumn ? 5 : 4)->findChild<QSpinBox *>()->value();
+            newWildMons.append(newWildMon);
+        }
+        mons[time] = newWildMons;
     }
-    mons[timeOfDay] = newWildMons;
     newInfo.active = true;
     newInfo.wildPokemon = mons;
     newInfo.encounterRate = monTable->findChild<QSpinBox *>()->value();

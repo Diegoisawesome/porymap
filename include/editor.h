@@ -137,8 +137,6 @@ public:
     double scale_base = sqrt(2); // adjust scale factor with this
     qreal collisionOpacity = 0.5;
 
-    int current_time_index = 0;
-
     void objectsView_onMousePress(QMouseEvent *event);
     void objectsView_onMouseMove(QMouseEvent *event);
     void objectsView_onMouseRelease(QMouseEvent *event);
