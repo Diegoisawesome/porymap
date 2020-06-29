@@ -122,6 +122,7 @@ public:
         this->enableHealLocationRespawnData = false;
         this->enableObjectEventInConnection = false;
         this->enableFloorNumber = false;
+        this->enableTripleLayerMetatiles = false;
         this->customScripts.clear();
         this->readKeys.clear();
     }
@@ -139,8 +140,6 @@ public:
     bool getEventWeatherTriggerEnabled();
     void setEventSecretBaseEnabled(bool enable);
     bool getEventSecretBaseEnabled();
-    void setEventFruitTreeEnabled(bool enable);
-    bool getEventFruitTreeEnabled();
     void setHiddenItemQuantityEnabled(bool enable);
     bool getHiddenItemQuantityEnabled();
     void setHiddenItemRequiresItemfinderEnabled(bool enable);
@@ -151,8 +150,12 @@ public:
     bool getObjectEventInConnectionEnabled();
     void setFloorNumberEnabled(bool enable);
     bool getFloorNumberEnabled();
+    void setTripleLayerMetatilesEnabled(bool enable);
+    bool getTripleLayerMetatilesEnabled();
     void setPhoneServiceEnabled(bool enable);
     bool getPhoneServiceEnabled();
+    void setEventFruitTreeEnabled(bool enable);
+    bool getEventFruitTreeEnabled();
     void setCustomScripts(QList<QString> scripts);
     QList<QString> getCustomScripts();
 protected:
@@ -169,13 +172,14 @@ private:
     bool useCustomBorderSize;
     bool enableEventWeatherTrigger;
     bool enableEventSecretBase;
-    bool enableEventFruitTree;
     bool enableHiddenItemQuantity;
     bool enableHiddenItemRequiresItemfinder;
     bool enableHealLocationRespawnData;
     bool enableObjectEventInConnection;
     bool enableFloorNumber;
+    bool enableTripleLayerMetatiles;
     bool enablePhoneService;
+    bool enableEventFruitTree;
     QList<QString> customScripts;
     QStringList readKeys;
 };

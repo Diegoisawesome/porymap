@@ -423,6 +423,12 @@ void ProjectConfig::parseConfigKeyValue(QString key, QString value) {
         if (!ok) {
             logWarn(QString("Invalid config value for enable_floor_number: '%1'. Must be 0 or 1.").arg(value));
         }
+    } else if (key == "enable_triple_layer_metatiles") {
+        bool ok;
+        this->enableTripleLayerMetatiles = value.toInt(&ok);
+        if (!ok) {
+            logWarn(QString("Invalid config value for enable_triple_layer_metatiles: '%1'. Must be 0 or 1.").arg(value));
+        }
     } else if (key == "enable_phone_service") {
         bool ok;
         this->enablePhoneService = value.toInt(&ok);
@@ -478,6 +484,7 @@ QMap<QString, QString> ProjectConfig::getKeyValueMap() {
     map.insert("enable_heal_location_respawn_data", QString::number(this->enableHealLocationRespawnData));
     map.insert("enable_object_event_in_connection", QString::number(this->enableObjectEventInConnection));
     map.insert("enable_floor_number", QString::number(this->enableFloorNumber));
+    map.insert("enable_triple_layer_metatiles", QString::number(this->enableTripleLayerMetatiles));
     map.insert("enable_phone_service", QString::number(this->enablePhoneService));
     map.insert("enable_event_fruit_tree", QString::number(this->enableEventFruitTree));
     map.insert("custom_scripts", this->customScripts.join(","));
@@ -521,6 +528,7 @@ void ProjectConfig::onNewConfigFileCreated() {
     this->enableFloorNumber = isPokefirered;
     this->useEncounterJson = true;
     this->usePoryScript = false;
+    this->enableTripleLayerMetatiles = false;
     this->customScripts.clear();
 }
 
@@ -586,15 +594,6 @@ bool ProjectConfig::getEventSecretBaseEnabled() {
     return this->enableEventSecretBase;
 }
 
-void ProjectConfig::setEventFruitTreeEnabled(bool enable) {
-    this->enableEventFruitTree = enable;
-    this->save();
-}
-
-bool ProjectConfig::getEventFruitTreeEnabled() {
-    return this->enableEventFruitTree;
-}
-
 void ProjectConfig::setHiddenItemQuantityEnabled(bool enable) {
     this->enableHiddenItemQuantity = enable;
     this->save();
@@ -640,6 +639,15 @@ bool ProjectConfig::getFloorNumberEnabled() {
     return this->enableFloorNumber;
 }
 
+void ProjectConfig::setTripleLayerMetatilesEnabled(bool enable) {
+    this->enableTripleLayerMetatiles = enable;
+    this->save();
+}
+
+bool ProjectConfig::getTripleLayerMetatilesEnabled() {
+    return this->enableTripleLayerMetatiles;
+}
+
 void ProjectConfig::setPhoneServiceEnabled(bool enable) {
     this->enablePhoneService = enable;
     this->save();
@@ -647,6 +655,15 @@ void ProjectConfig::setPhoneServiceEnabled(bool enable) {
 
 bool ProjectConfig::getPhoneServiceEnabled() {
     return this->enablePhoneService;
+}
+
+void ProjectConfig::setEventFruitTreeEnabled(bool enable) {
+    this->enableEventFruitTree = enable;
+    this->save();
+}
+
+bool ProjectConfig::getEventFruitTreeEnabled() {
+    return this->enableEventFruitTree;
 }
 
 void ProjectConfig::setCustomScripts(QList<QString> scripts) {

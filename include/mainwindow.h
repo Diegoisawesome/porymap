@@ -108,6 +108,7 @@ public:
 
 public slots:
     void scaleMapView(int);
+    void onWheelZoom(int);
 
 private slots:
     void on_action_Open_Project_triggered();
@@ -296,6 +297,7 @@ private:
     void initMapSortOrder();
     void setProjectSpecificUIVisibility();
     void loadUserSettings();
+    void applyMapListFilter(QString filterText);
     void restoreWindowState();
     void setTheme(QString);
     bool openRecentProject();

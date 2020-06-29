@@ -115,7 +115,7 @@ void MainWindow::initEditor() {
     connect(this->editor, SIGNAL(warpEventDoubleClicked(QString,QString)), this, SLOT(openWarpMap(QString,QString)));
     connect(this->editor, SIGNAL(currentMetatilesSelectionChanged()), this, SLOT(currentMetatilesSelectionChanged()));
     connect(this->editor, SIGNAL(wildMonDataChanged()), this, SLOT(onWildMonDataChanged()));
-    connect(this->editor, &Editor::wheelZoom, this, &MainWindow::scaleMapView);
+    connect(this->editor, &Editor::wheelZoom, this, &MainWindow::onWheelZoom);
 
     this->loadUserSettings();
 }
@@ -247,14 +247,20 @@ void MainWindow::mapSortOrder_changed(QAction *action)
         if (isProjectOpen())
         {
             sortMapList();
+            applyMapListFilter(ui->lineEdit_filterBox->text());
         }
     }
 }
 
 void MainWindow::on_lineEdit_filterBox_textChanged(const QString &arg1)
 {
-    mapListProxyModel->setFilterRegExp(QRegExp(arg1, Qt::CaseInsensitive, QRegExp::FixedString));
-    if (arg1.isEmpty()) {
+    this->applyMapListFilter(arg1);
+}
+
+void MainWindow::applyMapListFilter(QString filterText)
+{
+    mapListProxyModel->setFilterRegExp(QRegExp(filterText, Qt::CaseInsensitive, QRegExp::FixedString));
+    if (filterText.isEmpty()) {
         ui->mapList->collapseAll();
     } else {
         ui->mapList->expandToDepth(0);
@@ -1372,6 +1378,13 @@ void MainWindow::on_actionMove_triggered()
 void MainWindow::on_actionMap_Shift_triggered()
 {
     on_toolButton_Shift_clicked();
+}
+
+void MainWindow::onWheelZoom(int s) {
+    // Don't zoom the map when the user accidentally scrolls while performing a magic fill. (ctrl + middle button click)
+    if (!(QApplication::mouseButtons() & Qt::MiddleButton)) {
+        scaleMapView(s);
+    }
 }
 
 void MainWindow::scaleMapView(int s) {
