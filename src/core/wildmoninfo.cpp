@@ -22,12 +22,13 @@ WildMonInfo getDefaultMonInfo(EncounterField field, int timesCount) {
     return newInfo;
 }
 
-WildMonInfo copyMonInfoFromTab(QTableWidget *monTable, EncounterField monField, QVector<QVector<WildPokemon>> mons) {
+WildMonInfo copyMonInfoFromTab(QTableWidget *monTable, EncounterField monField, int timesCount) {
     WildMonInfo newInfo;
+    QVector<QVector<WildPokemon>> mons;
     int monsPerTimePeriod = monField.encounterRates.count();
 
     bool extraColumn = !monField.groups.isEmpty();
-    for (int time = 0; time < mons.count(); time++)
+    for (int time = 0; time < timesCount; time++)
     {
         QVector<WildPokemon> newWildMons;
         for (int row = 0; row < monsPerTimePeriod; row++) {
@@ -38,7 +39,7 @@ WildMonInfo copyMonInfoFromTab(QTableWidget *monTable, EncounterField monField, 
             newWildMon.maxLevel = monTable->cellWidget(absoluteRow, extraColumn ? 5 : 4)->findChild<QSpinBox *>()->value();
             newWildMons.append(newWildMon);
         }
-        mons[time] = newWildMons;
+        mons.append(newWildMons);
     }
     newInfo.active = true;
     newInfo.wildPokemon = mons;

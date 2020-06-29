@@ -241,7 +241,8 @@ void Editor::displayWildMonTables() {
 
             tabWidget->clearTableAt(tabIndex);
 
-            if (project->wildMonData.contains(map->constantName) && header.wildMons[fieldName].active) {
+            if (project->wildMonData.contains(map->constantName) && header.wildMons[fieldName].active
+                    && header.wildMons[fieldName].wildPokemon.count() > 0 && header.wildMons[fieldName].wildPokemon[0].count() > 0) {
                 tabWidget->populateTab(tabIndex, header.wildMons[fieldName], fieldName);
             } else {
                 tabWidget->setTabActive(tabIndex, false);
@@ -352,7 +353,7 @@ void Editor::addNewWildMonGroup(QWidget *window) {
                 if (copyCheckbox->isChecked()) {
                     MonTabWidget *copyFrom = static_cast<MonTabWidget *>(stack->widget(stackIndex));
                     if (copyFrom->isTabEnabled(tabIndex))
-                        header.wildMons.insert(fieldName, copyMonInfoFromTab(copyFrom->tableAt(tabIndex), monField, header.wildMons[fieldName].wildPokemon));
+                        header.wildMons.insert(fieldName, copyMonInfoFromTab(copyFrom->tableAt(tabIndex), monField, project->timesOfDay->count()));
                     else
                         header.wildMons.insert(fieldName, getDefaultMonInfo(monField, project->timesOfDay->count()));
                 } else {
@@ -623,7 +624,7 @@ void Editor::saveEncounterTabData() {
 
             QTableWidget *monTable = static_cast<QTableWidget *>(tabWidget->widget(fieldIndex - 1));
             QVector<WildPokemon> newWildMons;
-            encounterHeader.wildMons[fieldName] = copyMonInfoFromTab(monTable, monField, encounterHeader.wildMons[fieldName].wildPokemon);
+            encounterHeader.wildMons[fieldName] = copyMonInfoFromTab(monTable, monField, project->timesOfDay->count());
         }
     }
 }

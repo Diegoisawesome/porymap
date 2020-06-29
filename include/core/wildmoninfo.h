@@ -28,6 +28,6 @@ struct EncounterField {
 typedef QVector<EncounterField> EncounterFields;
 
 WildMonInfo getDefaultMonInfo(EncounterField field, int timesCount);
-WildMonInfo copyMonInfoFromTab(QTableWidget *table, EncounterField monField, QVector<QVector<WildPokemon>> mons);
+WildMonInfo copyMonInfoFromTab(QTableWidget *table, EncounterField monField, int timesCount);
 
 #endif // GUARD_WILDMONINFO_H
