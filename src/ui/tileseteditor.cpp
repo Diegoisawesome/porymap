@@ -17,6 +17,7 @@ TilesetEditor::TilesetEditor(Project *project, QString primaryTilesetLabel, QStr
     ui(new Ui::TilesetEditor)
 {
     this->init(project, primaryTilesetLabel, secondaryTilesetLabel);
+    new QShortcut(QKeySequence("Ctrl+Shift+Z"), this, SLOT(on_actionRedo_triggered()));
 }
 
 TilesetEditor::~TilesetEditor()
@@ -650,6 +651,7 @@ void TilesetEditor::on_actionChange_Metatiles_Count_triggered()
             this->secondaryTileset->metatiles->append(metatile);
         }
 
+        this->metatileSelector->updateSelectedMetatile();
         this->refresh();
         this->hasUnsavedChanges = true;
     }

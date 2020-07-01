@@ -17,6 +17,7 @@ public:
     void select(uint16_t metatileId);
     void setTilesets(Tileset*, Tileset*);
     uint16_t getSelectedMetatile();
+    void updateSelectedMetatile();
 
 protected:
     void mousePressEvent(QGraphicsSceneMouseEvent*);
@@ -30,10 +31,9 @@ private:
     Tileset *secondaryTileset = nullptr;
     uint16_t selectedMetatile;
     int numMetatilesWide;
-    void updateSelectedMetatile();
     uint16_t getMetatileId(int x, int y);
     QPoint getMetatileIdCoords(uint16_t);
-    uint16_t getValidMetatileId(uint16_t);
+    bool shouldAcceptEvent(QGraphicsSceneMouseEvent*);
 
 signals:
     void hoveredMetatileChanged(uint16_t);

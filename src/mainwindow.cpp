@@ -1092,8 +1092,9 @@ void MainWindow::on_actionNew_Tileset_triggered() {
         editor->project->loadTilesetTiles(newSet, *tilesImage);
         newSet->metatiles = new QList<Metatile*>();
         for(int i = 0; i < numMetaTiles; ++i) {
+            int tilesPerMetatile = projectConfig.getTripleLayerMetatilesEnabled() ? 12 : 8;
             Metatile *mt = new Metatile();
-            for(int j = 0; j < 8; ++j){
+            for(int j = 0; j < tilesPerMetatile; ++j){
                 Tile *tile = new Tile();
                 //Create a checkerboard-style dummy tileset
                 if(((i / 8) % 2) == 0)
@@ -1145,6 +1146,10 @@ void MainWindow::on_actionNew_Tileset_triggered() {
         } else {
             this->ui->comboBox_SecondaryTileset->addItem(createTilesetDialog->fullSymbolName);
         }
+
+        // hydrate tileset labels.
+        this->editor->project->getTilesetLabels();
+
         QMessageBox msgBox(this);
         msgBox.setText("Successfully created tileset.");
         QString message = QString("Tileset \"%1\" was created successfully.").arg(createTilesetDialog->friendlyName);
