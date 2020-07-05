@@ -14,8 +14,16 @@ QImage getCollisionMetatileImage(int collision, int elevation) {
     return collisionImage.toImage();
 }
 
-QImage getMetatileImage(uint16_t tile, Tileset *primaryTileset, Tileset *secondaryTileset, bool useTruePalettes) {
+QImage getMetatileImage(
+        uint16_t tile,
+        Tileset *primaryTileset,
+        Tileset *secondaryTileset,
+        QList<int> layerOrder,
+        QList<float> layerOpacity,
+        bool useTruePalettes)
+{
     QImage metatile_image(16, 16, QImage::Format_RGBA8888);
+    metatile_image.fill(Qt::black);
 
     Metatile* metatile = Tileset::getMetatile(tile, primaryTileset, secondaryTileset);
     if (!metatile || !metatile->tiles) {
@@ -36,14 +44,16 @@ QImage getMetatileImage(uint16_t tile, Tileset *primaryTileset, Tileset *seconda
     for (int layer = 0; layer < numLayers; layer++)
     for (int y = 0; y < 2; y++)
     for (int x = 0; x < 2; x++) {
-        Tile tile_ = metatile->tiles->value((y * 2) + x + (layer * 4));
+        int l = layerOrder.size() >= numLayers ? layerOrder[layer] : layer;
+        int bottomLayer = layerOrder.size() >= numLayers ? layerOrder[0] : 0;
+        Tile tile_ = metatile->tiles->value((y * 2) + x + (l * 4));
         QImage tile_image = getTileImage(tile_.tile, primaryTileset, secondaryTileset);
         if (tile_image.isNull()) {
             // Some metatiles specify tiles that are outside the valid range.
             // These are treated as completely transparent, so they can be skipped without
             // being drawn unless they're on the bottom layer, in which case we need
             // a placeholder because garbage will be drawn otherwise.
-            if (layer == 0) {
+            if (l == bottomLayer) {
                 metatile_painter.fillRect(x * 8, y * 8, 8, 8, palettes.value(0).value(0));
             }
             continue;
@@ -59,14 +69,24 @@ QImage getMetatileImage(uint16_t tile, Tileset *primaryTileset, Tileset *seconda
             logWarn(QString("Tile '%1' is referring to invalid palette number: '%2'").arg(tile_.tile).arg(tile_.palette));
         }
 
+        QPoint origin = QPoint(x*8, y*8);
+        float opacity = layerOpacity.size() >= numLayers ? layerOpacity[l] : 1.0;
+        if (opacity < 1.0) {
+            int alpha = 255 * opacity;
+            for (int c = 0; c < tile_image.colorCount(); c++) {
+                QColor color(tile_image.color(c));
+                color.setAlpha(alpha);
+                tile_image.setColor(c, color.rgba());
+            }
+        }
+
         // The top layer of the metatile has its first color displayed at transparent.
-        if (layer > 0) {
+        if (l != bottomLayer) {
             QColor color(tile_image.color(0));
             color.setAlpha(0);
             tile_image.setColor(0, color.rgba());
         }
 
-        QPoint origin = QPoint(x*8, y*8);
         metatile_painter.drawImage(origin, tile_image.mirrored(tile_.xflip, tile_.yflip));
     }
     metatile_painter.end();

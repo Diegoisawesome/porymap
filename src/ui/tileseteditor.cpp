@@ -12,11 +12,11 @@
 #include <QCloseEvent>
 #include <QImageReader>
 
-TilesetEditor::TilesetEditor(Project *project, QString primaryTilesetLabel, QString secondaryTilesetLabel, QWidget *parent) :
+TilesetEditor::TilesetEditor(Project *project, Map *map, QWidget *parent) :
     QMainWindow(parent),
     ui(new Ui::TilesetEditor)
 {
-    this->init(project, primaryTilesetLabel, secondaryTilesetLabel);
+    this->init(project, map);
     new QShortcut(QKeySequence("Ctrl+Shift+Z"), this, SLOT(on_actionRedo_triggered()));
 }
 
@@ -37,7 +37,7 @@ TilesetEditor::~TilesetEditor()
     delete metatileLayersScene;
 }
 
-void TilesetEditor::init(Project *project, QString primaryTilesetLabel, QString secondaryTilesetLabel) {
+void TilesetEditor::init(Project *project, Map *map) {
     ui->setupUi(this);
     this->project = project;
 
@@ -46,8 +46,8 @@ void TilesetEditor::init(Project *project, QString primaryTilesetLabel, QString 
     this->tileYFlip = ui->checkBox_yFlip->isChecked();
     this->paletteId = ui->spinBox_paletteSelector->value();
 
-    Tileset *primaryTileset = project->getTileset(primaryTilesetLabel);
-    Tileset *secondaryTileset = project->getTileset(secondaryTilesetLabel);
+    Tileset *primaryTileset = project->getTileset(map->layout->tileset_primary_label);
+    Tileset *secondaryTileset = project->getTileset(map->layout->tileset_secondary_label);
     if (this->primaryTileset) delete this->primaryTileset;
     if (this->secondaryTileset) delete this->secondaryTileset;
     this->primaryTileset = primaryTileset->copy();
@@ -95,7 +95,7 @@ void TilesetEditor::init(Project *project, QString primaryTilesetLabel, QString 
     QRegExpValidator *validator = new QRegExpValidator(expression);
     this->ui->lineEdit_metatileLabel->setValidator(validator);
 
-    this->initMetatileSelector();
+    this->initMetatileSelector(map);
     this->initMetatileLayersItem();
     this->initTileSelector();
     this->initSelectedTileItem();
@@ -105,7 +105,28 @@ void TilesetEditor::init(Project *project, QString primaryTilesetLabel, QString 
     metatileHistory.push(commit);
 }
 
+void TilesetEditor::selectMetatile(uint16_t metatileId) {
+    this->metatileSelector->select(metatileId);
+    QPoint pos = this->metatileSelector->getMetatileIdCoordsOnWidget(metatileId);
+    this->ui->scrollArea_Metatiles->ensureVisible(pos.x(), pos.y());
+}
+
+void TilesetEditor::setMap(Map *map) {
+    this->metatileSelector->map = map;
+}
+
 void TilesetEditor::setTilesets(QString primaryTilesetLabel, QString secondaryTilesetLabel) {
+    if (this->hasUnsavedChanges) {
+        QMessageBox::StandardButton result = QMessageBox::question(
+            this,
+            "porymap",
+            "Tileset has been modified, save changes?",
+            QMessageBox::No | QMessageBox::Yes,
+            QMessageBox::Yes);
+        if (result == QMessageBox::Yes)
+            this->on_actionSave_Tileset_triggered();
+    }
+    this->hasUnsavedChanges = false;
     delete this->primaryTileset;
     delete this->secondaryTileset;
     Tileset *primaryTileset = project->getTileset(primaryTilesetLabel);
@@ -129,9 +150,9 @@ void TilesetEditor::refresh() {
     this->ui->graphicsView_selectedTile->setFixedSize(this->selectedTilePixmapItem->pixmap().width() + 2, this->selectedTilePixmapItem->pixmap().height() + 2);
 }
 
-void TilesetEditor::initMetatileSelector()
+void TilesetEditor::initMetatileSelector(Map *map)
 {
-    this->metatileSelector = new TilesetEditorMetatileSelector(this->primaryTileset, this->secondaryTileset);
+    this->metatileSelector = new TilesetEditorMetatileSelector(this->primaryTileset, this->secondaryTileset, map);
     connect(this->metatileSelector, SIGNAL(hoveredMetatileChanged(uint16_t)),
             this, SLOT(onHoveredMetatileChanged(uint16_t)));
     connect(this->metatileSelector, SIGNAL(hoveredMetatileCleared()),
@@ -370,6 +391,7 @@ void TilesetEditor::on_comboBox_metatileBehaviors_activated(const QString &metat
         this->metatile->behavior = static_cast<uint8_t>(project->metatileBehaviorMap[metatileBehavior]);
         MetatileHistoryItem *commit = new MetatileHistoryItem(metatileSelector->getSelectedMetatile(), prevMetatile, this->metatile->copy());
         metatileHistory.push(commit);
+        this->hasUnsavedChanges = true;
     }
 }
 
@@ -386,6 +408,7 @@ void TilesetEditor::saveMetatileLabel()
         this->metatile->label = this->ui->lineEdit_metatileLabel->text();
         MetatileHistoryItem *commit = new MetatileHistoryItem(metatileSelector->getSelectedMetatile(), prevMetatile, this->metatile->copy());
         metatileHistory.push(commit);
+        this->hasUnsavedChanges = true;
     }
 }
 
@@ -396,6 +419,7 @@ void TilesetEditor::on_comboBox_layerType_activated(int layerType)
         this->metatile->layerType = static_cast<uint8_t>(layerType);
         MetatileHistoryItem *commit = new MetatileHistoryItem(metatileSelector->getSelectedMetatile(), prevMetatile, this->metatile->copy());
         metatileHistory.push(commit);
+        this->hasUnsavedChanges = true;
     }
 }
 
@@ -406,6 +430,7 @@ void TilesetEditor::on_comboBox_encounterType_activated(int encounterType)
         this->metatile->encounterType = static_cast<uint8_t>(encounterType);
         MetatileHistoryItem *commit = new MetatileHistoryItem(metatileSelector->getSelectedMetatile(), prevMetatile, this->metatile->copy());
         metatileHistory.push(commit);
+        this->hasUnsavedChanges = true;
     }
 }
 
@@ -416,6 +441,7 @@ void TilesetEditor::on_comboBox_terrainType_activated(int terrainType)
         this->metatile->terrainType = static_cast<uint8_t>(terrainType);
         MetatileHistoryItem *commit = new MetatileHistoryItem(metatileSelector->getSelectedMetatile(), prevMetatile, this->metatile->copy());
         metatileHistory.push(commit);
+        this->hasUnsavedChanges = true;
     }
 }
 

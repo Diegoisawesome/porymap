@@ -104,6 +104,10 @@ public:
     Q_INVOKABLE void setTimeout(QJSValue callback, int milliseconds);
     void invokeCallback(QJSValue callback);
     Q_INVOKABLE void log(QString message);
+    Q_INVOKABLE QList<int> getMetatileLayerOrder();
+    Q_INVOKABLE void setMetatileLayerOrder(QList<int> order);
+    Q_INVOKABLE QList<float> getMetatileLayerOpacity();
+    Q_INVOKABLE void setMetatileLayerOpacity(QList<float> order);
 
 
 public slots:

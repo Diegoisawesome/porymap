@@ -507,3 +507,29 @@ void MainWindow::invokeCallback(QJSValue callback) {
 void MainWindow::log(QString message) {
     logInfo(message);
 }
+
+QList<int> MainWindow::getMetatileLayerOrder() {
+    if (!this->editor || !this->editor->map)
+        return QList<int>();
+    return this->editor->map->metatileLayerOrder;
+}
+
+void MainWindow::setMetatileLayerOrder(QList<int> order) {
+    if (!this->editor || !this->editor->map)
+        return;
+    this->editor->map->metatileLayerOrder = order;
+    this->refreshAfterPalettePreviewChange();
+}
+
+QList<float> MainWindow::getMetatileLayerOpacity() {
+    if (!this->editor || !this->editor->map)
+        return QList<float>();
+    return this->editor->map->metatileLayerOpacity;
+}
+
+void MainWindow::setMetatileLayerOpacity(QList<float> order) {
+    if (!this->editor || !this->editor->map)
+        return;
+    this->editor->map->metatileLayerOpacity = order;
+    this->refreshAfterPalettePreviewChange();
+}

@@ -23,7 +23,14 @@ void TilesetEditorMetatileSelector::draw() {
         if (i >= primaryLength) {
             tile += Project::getNumMetatilesPrimary() - primaryLength;
         }
-        QImage metatile_image = getMetatileImage(tile, this->primaryTileset, this->secondaryTileset, true).scaled(32, 32);
+        QImage metatile_image = getMetatileImage(
+                    tile,
+                    this->primaryTileset,
+                    this->secondaryTileset,
+                    map->metatileLayerOrder,
+                    map->metatileLayerOpacity,
+                    true)
+                .scaled(32, 32);
         int map_y = i / this->numMetatilesWide;
         int map_x = i % this->numMetatilesWide;
         QPoint metatile_origin = QPoint(map_x * 32, map_y * 32);
@@ -116,4 +123,11 @@ QPoint TilesetEditorMetatileSelector::getMetatileIdCoords(uint16_t metatileId) {
                 ? metatileId
                 : metatileId - Project::getNumMetatilesPrimary() + this->primaryTileset->metatiles->length();
     return QPoint(index % this->numMetatilesWide, index / this->numMetatilesWide);
+}
+
+QPoint TilesetEditorMetatileSelector::getMetatileIdCoordsOnWidget(uint16_t metatileId) {
+    QPoint pos = getMetatileIdCoords(metatileId);
+    pos.rx() = (pos.x() * this->cellWidth) + (this->cellWidth / 2);
+    pos.ry() = (pos.y() * this->cellHeight) + (this->cellHeight / 2);
+    return pos;
 }
