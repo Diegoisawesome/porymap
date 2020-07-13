@@ -105,10 +105,12 @@ void TilesetEditor::init(Project *project, Map *map) {
     metatileHistory.push(commit);
 }
 
-void TilesetEditor::selectMetatile(uint16_t metatileId) {
+bool TilesetEditor::selectMetatile(uint16_t metatileId) {
+    if (!Tileset::metatileIsValid(metatileId, this->primaryTileset, this->secondaryTileset)) return false;
     this->metatileSelector->select(metatileId);
     QPoint pos = this->metatileSelector->getMetatileIdCoordsOnWidget(metatileId);
     this->ui->scrollArea_Metatiles->ensureVisible(pos.x(), pos.y());
+    return true;
 }
 
 void TilesetEditor::setMap(Map *map) {
@@ -636,6 +638,7 @@ void TilesetEditor::on_actionChange_Metatiles_Count_triggered()
     if (dialog.exec() == QDialog::Accepted) {
         int numPrimaryMetatiles = primarySpinBox->value();
         int numSecondaryMetatiles = secondarySpinBox->value();
+        int numTiles = projectConfig.getTripleLayerMetatilesEnabled() ? 12 : 8;
         while (this->primaryTileset->metatiles->length() > numPrimaryMetatiles) {
             Metatile *metatile = this->primaryTileset->metatiles->takeLast();
             delete metatile;
@@ -651,7 +654,7 @@ void TilesetEditor::on_actionChange_Metatiles_Count_triggered()
             metatile->layerType = 0;
             metatile->encounterType = 0;
             metatile->terrainType = 0;
-            for (int i = 0; i < 8; i++) {
+            for (int i = 0; i < numTiles; i++) {
                 metatile->tiles->append(tile);
             }
             this->primaryTileset->metatiles->append(metatile);
@@ -671,7 +674,7 @@ void TilesetEditor::on_actionChange_Metatiles_Count_triggered()
             metatile->layerType = 0;
             metatile->encounterType = 0;
             metatile->terrainType = 0;
-            for (int i = 0; i < 8; i++) {
+            for (int i = 0; i < numTiles; i++) {
                 metatile->tiles->append(tile);
             }
             this->secondaryTileset->metatiles->append(metatile);

@@ -311,6 +311,7 @@ private:
 
     bool isProjectOpen();
     void showExportMapImageWindow(bool stitchMode);
+    void redrawMetatileSelection();
 };
 
 enum MapListUserRoles {

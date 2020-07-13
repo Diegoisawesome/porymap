@@ -1167,7 +1167,7 @@ void MainWindow::updateTilesetEditor() {
     }
 }
 
-void MainWindow::currentMetatilesSelectionChanged()
+void MainWindow::redrawMetatileSelection()
 {
     double scale = pow(3.0, static_cast<double>(porymapConfig.getMetatilesZoom() - 30) / 30.0);
     ui->graphicsView_currentMetatileSelection->setFixedSize(editor->scene_current_metatile_selection_item->pixmap().width() * scale + 2, editor->scene_current_metatile_selection_item->pixmap().height() * scale + 2);
@@ -1179,6 +1179,11 @@ void MainWindow::currentMetatilesSelectionChanged()
         pos *= scale;
         ui->scrollArea_2->ensureVisible(pos.x(), pos.y(), 8 * scale, 8 * scale);
     }
+}
+
+void MainWindow::currentMetatilesSelectionChanged()
+{
+    redrawMetatileSelection();
     if (this->tilesetEditor)
         this->tilesetEditor->selectMetatile(editor->metatile_selector_item->getSelectedMetatiles()->at(0));
 }
@@ -2633,7 +2638,7 @@ void MainWindow::on_horizontalSlider_MetatileZoom_valueChanged(int value) {
                                                   ceil(static_cast<double>(editor->selected_border_metatiles_item->pixmap().height()) * scale) + 2);
 
     ui->graphicsView_currentMetatileSelection->setMatrix(matrix);
-    currentMetatilesSelectionChanged();
+    redrawMetatileSelection();
 }
 
 void MainWindow::on_actionRegion_Map_Editor_triggered() {
