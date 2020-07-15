@@ -1232,6 +1232,7 @@ void Editor::displayMetatileSelector() {
                 this, SLOT(onSelectedMetatilesChanged()));
         metatile_selector_item->select(0);
     } else {
+        metatile_selector_item->setMap(map);
         metatile_selector_item->setTilesets(map->layout->tileset_primary, map->layout->tileset_secondary);
     }
 
@@ -1892,8 +1893,33 @@ void Editor::selectMapEvent(DraggablePixmapItem *object, bool toggle) {
     }
 }
 
+void Editor::duplicateSelectedEvents() {
+    if (!selected_events || !selected_events->length() || !map || !current_view || map_item->paintingMode != MapPixmapItem::PaintMode::EventObjects)
+        return;
+
+    QList<DraggablePixmapItem*> *duplicates = new QList<DraggablePixmapItem*>;
+    for (int i = 0; i < selected_events->length(); i++) {
+        Event *original = selected_events->at(i)->event;
+        QString eventType = original->get("event_type");
+        if (eventLimitReached(map, eventType)) {
+            logWarn(QString("Skipping duplication, the map limit for events of type '%1' has been reached.").arg(eventType));
+            continue;
+        }
+        if (eventType == EventType::HealLocation) continue;
+        Event *duplicate = new Event(*original);
+        map->addEvent(duplicate);
+        DraggablePixmapItem *object = addMapEvent(duplicate);
+        duplicates->append(object);
+    }
+    if (duplicates->length()) {
+        selected_events->clear();
+        selected_events = duplicates;
+        updateSelectedEvents();
+    }
+}
+
 DraggablePixmapItem* Editor::addNewEvent(QString event_type) {
-    if (project && map && !event_type.isEmpty()) {
+    if (project && map && !event_type.isEmpty() && !eventLimitReached(map, event_type)) {
         Event *event = Event::createNewEvent(event_type, map->name, project);
         event->put("map_name", map->name);
         if (event_type == EventType::HealLocation) {
@@ -1907,6 +1933,16 @@ DraggablePixmapItem* Editor::addNewEvent(QString event_type) {
         return object;
     }
     return nullptr;
+}
+
+// Currently only object events have an explicit limit
+bool Editor::eventLimitReached(Map *map, QString event_type)
+{
+    if (project && map && !event_type.isEmpty()) {
+        if (event_type == EventType::Object)
+            return map->events.value("object_event_group").length() >= project->getMaxObjectEvents();
+    }
+    return false;
 }
 
 void Editor::deleteEvent(Event *event) {

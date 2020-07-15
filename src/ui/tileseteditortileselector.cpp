@@ -71,6 +71,7 @@ void TilesetEditorTileSelector::setTilesets(Tileset *primaryTileset, Tileset *se
 
 void TilesetEditorTileSelector::setPaletteId(int paletteId) {
     this->paletteId = paletteId;
+    this->paletteChanged = true;
     this->draw();
 }
 
@@ -95,47 +96,66 @@ void TilesetEditorTileSelector::updateSelectedTiles() {
 
 QList<Tile> TilesetEditorTileSelector::getSelectedTiles() {
     if (this->externalSelection) {
-        return this->externalSelectedTiles;
+        return buildSelectedTiles(this->externalSelectionWidth, this->externalSelectionHeight, this->externalSelectedTiles);
     } else {
-        QList<Tile> tiles;
-        QList<QList<Tile>> tileMatrix;
-        QList<uint16_t> selected = this->selectedTiles;
         QPoint dimensions = this->getSelectionDimensions();
-        int width = dimensions.x();
-        int height = dimensions.y();
-        for (int j = 0; j < height; j++) {
-            QList<Tile> row;
-            for (int i = 0; i < width; i++) {
-                int index = i + j * width;
-                uint16_t tile = selected.at(index);
-                if (this->xFlip)
-                    row.prepend(Tile(tile, this->xFlip, this->yFlip, this->paletteId));
-                else
-                    row.append(Tile(tile, this->xFlip, this->yFlip, this->paletteId));
-            }
-            if (this->yFlip)
-                tileMatrix.prepend(row);
-            else
-                tileMatrix.append(row);
+        QList<Tile> tiles;
+        for (int i = 0; i < this->selectedTiles.length(); i++) {
+            uint16_t tile = this->selectedTiles.at(i);
+            tiles.append(Tile(tile, false, false, this->paletteId));
         }
-        for (int j = 0; j < height; j++) {
-            for (int i = 0; i < width; i++) {
-                tiles.append(tileMatrix.at(j).at(i));
-            }
-        }
-        return tiles;
+        return buildSelectedTiles(dimensions.x(), dimensions.y(), tiles);
     }
 }
 
-void TilesetEditorTileSelector::setExternalSelection(int width, int height, QList<Tile> tiles) {
+QList<Tile> TilesetEditorTileSelector::buildSelectedTiles(int width, int height, QList<Tile> selected) {
+    QList<Tile> tiles;
+    QList<QList<Tile>> tileMatrix;
+    for (int j = 0; j < height; j++) {
+        QList<Tile> row;
+        QList<Tile> layerRow;
+        for (int i = 0; i < width; i++) {
+            int index = i + j * width;
+            Tile tile = selected.at(index);
+            tile.xflip ^= this->xFlip;
+            tile.yflip ^= this->yFlip;
+            if (this->paletteChanged)
+                tile.palette = this->paletteId;
+            if (this->xFlip)
+                layerRow.prepend(tile);
+            else
+                layerRow.append(tile);
+
+            // If we've completed a layer row, or its the last tile of an incompletely
+            // selected layer, then append the layer row to the full row
+            // If not an external selection, treat the whole row as 1 "layer"
+            if (i == width - 1 || (this->externalSelection && (this->externalSelectedPos.at(index) % 4) & 1)) {
+                row.append(layerRow);
+                layerRow.clear();
+            }
+        }
+        if (this->yFlip)
+            tileMatrix.prepend(row);
+        else
+            tileMatrix.append(row);
+    }
+    for (int j = 0; j < height; j++) {
+        for (int i = 0; i < width; i++) {
+            tiles.append(tileMatrix.at(j).at(i));
+        }
+    }
+    return tiles;
+}
+
+void TilesetEditorTileSelector::setExternalSelection(int width, int height, QList<Tile> tiles, QList<int> tileIdxs) {
     this->externalSelection = true;
+    this->paletteChanged = false;
     this->externalSelectionWidth = width;
     this->externalSelectionHeight = height;
     this->externalSelectedTiles.clear();
-    for (int i = 0; i < tiles.length(); i++) {
-        this->externalSelectedTiles.append(tiles.at(i));
-    }
-
+    this->externalSelectedTiles.append(tiles);
+    this->externalSelectedPos.clear();
+    this->externalSelectedPos.append(tileIdxs);
     this->draw();
     emit selectedTilesChanged();
 }

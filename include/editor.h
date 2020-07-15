@@ -100,6 +100,7 @@ public:
     Event* createNewEvent(QString event_type);
     void deleteEvent(Event *);
     void updateSelectedEvents();
+    void duplicateSelectedEvents();
     void redrawObject(DraggablePixmapItem *item);
     QList<DraggablePixmapItem *> *getObjects();
 
@@ -169,6 +170,7 @@ private:
     Event* createNewSecretBaseEvent();
     QString getMovementPermissionText(uint16_t collision, uint16_t elevation);
     QString getMetatileDisplayMessage(uint16_t metatileId);
+    bool eventLimitReached(Map *, QString);
 
 private slots:
     void onMapStartPaint(QGraphicsSceneMouseEvent *event, MapPixmapItem *item);

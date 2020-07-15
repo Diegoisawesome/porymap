@@ -77,6 +77,7 @@ void MainWindow::initExtraShortcuts() {
     new QShortcut(QKeySequence("Ctrl+Shift+Z"), this, SLOT(redo()));
     new QShortcut(QKeySequence("Ctrl+0"), this, SLOT(resetMapViewScale()));
     new QShortcut(QKeySequence("Ctrl+G"), ui->checkBox_ToggleGrid, SLOT(toggle()));
+    new QShortcut(QKeySequence("Ctrl+D"), this, SLOT(duplicate()));
     ui->actionZoom_In->setShortcuts({QKeySequence("Ctrl++"), QKeySequence("Ctrl+=")});
 }
 
@@ -1001,7 +1002,7 @@ void MainWindow::onNewMapCreated() {
     setMap(newMapName, true);
 
     if (newMap->isFlyable == "TRUE") {
-        addNewEvent("event_heal_location");
+        addNewEvent(EventType::HealLocation);
         editor->project->saveHealLocationStruct(newMap);
         editor->save();// required
     }
@@ -1252,6 +1253,10 @@ void MainWindow::redo() {
     editor->redo();
 }
 
+void MainWindow::duplicate() {
+    editor->duplicateSelectedEvents();
+}
+
 // Open current map scripts in system default editor for .inc files
 void MainWindow::openInTextEditor() {
     bool usePoryscript = projectConfig.getUsePoryScript();
@@ -1430,11 +1435,22 @@ void MainWindow::resetMapViewScale() {
 
 void MainWindow::addNewEvent(QString event_type)
 {
-    if (editor) {
+    if (editor && editor->project) {
         DraggablePixmapItem *object = editor->addNewEvent(event_type);
-        updateObjects();
         if (object) {
+            updateObjects();
             editor->selectMapEvent(object, false);
+        } else {
+            QMessageBox msgBox(this);
+            msgBox.setText("Failed to add new event");
+            if (event_type == EventType::Object) {
+                msgBox.setInformativeText(QString("The limit for object events (%1) has been reached.\n\n"
+                                                  "This limit can be adjusted with OBJECT_EVENT_TEMPLATES_COUNT in 'include/constants/global.h'.")
+                                          .arg(editor->project->getMaxObjectEvents()));
+            }
+            msgBox.setDefaultButton(QMessageBox::Ok);
+            msgBox.setIcon(QMessageBox::Icon::Warning);
+            msgBox.exec();
         }
     }
 }
@@ -1551,7 +1567,7 @@ void MainWindow::updateSelectedObjects() {
         QString event_group_type = item->event->get("event_group_type");
         QString map_name = item->event->get("map_name");
         int event_offs;
-        if (event_type == "event_warp") { event_offs = 0; }
+        if (event_type == EventType::Warp) { event_offs = 0; }
         else { event_offs = 1; }
         frame->ui->label_name->setText(QString("%1 Id").arg(event_type));
 
@@ -2106,22 +2122,25 @@ void MainWindow::on_toolButton_deleteObject_clicked()
             DraggablePixmapItem *next_selected_event = nullptr;
             for (DraggablePixmapItem *item : *editor->selected_events) {
                 QString event_group = item->event->get("event_group_type");
-                int index = editor->map->events.value(event_group).indexOf(item->event);
-                // Get the index for the event that should be selected after this event has been deleted.
-                // If it's at the end of the list, select the previous event, otherwise select the next one.
-                if (index != editor->map->events.value(event_group).size() - 1)
-                    index++;
-                else
-                    index--;
-                Event *event = nullptr;
-                if (index >= 0)
-                    event = editor->map->events.value(event_group).at(index);
                 if (event_group != "heal_event_group") {
-                    for (QGraphicsItem *child : editor->events_group->childItems()) {
-                        DraggablePixmapItem *event_item = static_cast<DraggablePixmapItem *>(child);
-                        if (event_item->event == event) {
-                            next_selected_event = event_item;
-                            break;
+                    // Get the index for the event that should be selected after this event has been deleted.
+                    // If it's at the end of the list, select the previous event, otherwise select the next one.
+                    // Don't bother getting the event to select if there are still more events to delete
+                    if (editor->selected_events->length() == 1) {
+                        int index = editor->map->events.value(event_group).indexOf(item->event);
+                        if (index != editor->map->events.value(event_group).size() - 1)
+                            index++;
+                        else
+                            index--;
+                        Event *event = nullptr;
+                        if (index >= 0)
+                            event = editor->map->events.value(event_group).at(index);
+                        for (QGraphicsItem *child : editor->events_group->childItems()) {
+                            DraggablePixmapItem *event_item = static_cast<DraggablePixmapItem *>(child);
+                            if (event_item->event == event) {
+                                next_selected_event = event_item;
+                                break;
+                            }
                         }
                     }
                     editor->deleteEvent(item->event);

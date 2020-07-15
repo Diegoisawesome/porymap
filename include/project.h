@@ -196,6 +196,7 @@ public:
     static int getMapDataSize(int width, int height);
     static bool mapDimensionsValid(int width, int height);
     bool calculateDefaultMapSize();
+    static int getMaxObjectEvents();
 
 private:
     void updateMapLayout(Map*);
@@ -217,6 +218,7 @@ private:
     static int num_pals_total;
     static int max_map_data_size;
     static int default_map_size;
+    static int max_object_events;
 
     QWidget *parent;
 

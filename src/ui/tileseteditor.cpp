@@ -172,7 +172,7 @@ void TilesetEditor::initMetatileSelector(Map *map)
 
 void TilesetEditor::initTileSelector()
 {
-    this->tileSelector = new TilesetEditorTileSelector(this->primaryTileset, this->secondaryTileset);
+    this->tileSelector = new TilesetEditorTileSelector(this->primaryTileset, this->secondaryTileset, projectConfig.getTripleLayerMetatilesEnabled());
     connect(this->tileSelector, SIGNAL(hoveredTileChanged(uint16_t)),
             this, SLOT(onHoveredTileChanged(uint16_t)));
     connect(this->tileSelector, SIGNAL(hoveredTileCleared()),
@@ -328,6 +328,7 @@ void TilesetEditor::onMetatileLayerTileChanged(int x, int y) {
 
 void TilesetEditor::onMetatileLayerSelectionChanged(QPoint selectionOrigin, int width, int height) {
     QList<Tile> tiles;
+    QList<int> tileIdxs;
     int x = selectionOrigin.x();
     int y = selectionOrigin.y();
     bool isTripleLayerMetatile = projectConfig.getTripleLayerMetatilesEnabled();
@@ -337,22 +338,14 @@ void TilesetEditor::onMetatileLayerSelectionChanged(QPoint selectionOrigin, int 
             int tileIndex = ((x + i) / 2 * 4) + ((y + j) * 2) + ((x + i) % 2);
             if (tileIndex < maxTileIndex) {
                 tiles.append(this->metatile->tiles->at(tileIndex));
+                tileIdxs.append(tileIndex);
             }
         }
     }
 
-    if (width == 1 && height == 1) {
-        this->tileSelector->select(static_cast<uint16_t>(tiles[0].tile));
+    if (width == 1 && height == 1)
         ui->spinBox_paletteSelector->setValue(tiles[0].palette);
-        ui->checkBox_xFlip->setChecked(tiles[0].xflip);
-        ui->checkBox_yFlip->setChecked(tiles[0].yflip);
-        QPoint pos = tileSelector->getTileCoordsOnWidget(static_cast<uint16_t>(tiles[0].tile));
-        ui->scrollArea_Tiles->ensureVisible(pos.x(), pos.y());
-    }
-    else {
-        this->tileSelector->setExternalSelection(width, height, tiles);
-    }
-
+    this->tileSelector->setExternalSelection(width, height, tiles, tileIdxs);
     this->metatileLayersItem->clearLastModifiedCoords();
 }
 
