@@ -7,18 +7,26 @@ and this project somewhat adheres to [Semantic Versioning](https://semver.org/sp
 The **"Breaking Changes"** listed below are changes that have been made in the decompilation projects (e.g. pokeemerald), which porymap requires in order to work properly. If porymap is used on a project that is not up-to-date with the breaking changes, then porymap will likely break or behave improperly.
 
 ## [Unreleased]
+Nothing, yet.
+
+## [4.3.1] - 2020-07-17
 ### Added
 - Add keyboard shortcut `Ctrl + D` for duplicating map events.
+- Add keyboard shortcut `Ctrl + Shift + Z` for "redo" in the tileset editor.
+- Add scripting api to reorder metatile layers and draw them with opacity.
 
 ### Changed
 - The tileset editor now syncs its metatile selection with the map's metatile selector.
 - The number of object events per map is now limited to OBJECT_EVENT_TEMPLATES_COUNT
+- The tileset editor can now flip selections that were taken from an existing metatile.
 
 ### Fixed
+- Fix bug where editing a metatile layer would have no effect.
 - Fix a crash that occured when creating a new tileset using triple layer mode.
 - Fix crash when reducing number of metatiles past current selection.
 - Fix various methods of selecting invalid metatiles.
 - Fix sprite transparency not updating when changing object event graphics.
+- Fix dropdown menu item selection when using the arrow keys.
 
 ## [4.3.0] - 2020-06-27
 ### Added
@@ -227,7 +235,8 @@ The **"Breaking Changes"** listed below are changes that have been made in the d
 ## [1.0.0] - 2018-10-26
 This was the initial release.
 
-[Unreleased]: https://github.com/huderlem/porymap/compare/4.3.0...HEAD
+[Unreleased]: https://github.com/huderlem/porymap/compare/4.3.1...HEAD
+[4.3.1]: https://github.com/huderlem/porymap/compare/4.3.0...4.3.1
 [4.3.0]: https://github.com/huderlem/porymap/compare/4.2.0...4.3.0
 [4.2.0]: https://github.com/huderlem/porymap/compare/4.1.0...4.2.0
 [4.1.0]: https://github.com/huderlem/porymap/compare/4.0.0...4.1.0
