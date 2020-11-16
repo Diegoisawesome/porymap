@@ -161,7 +161,7 @@ void MonTabWidget::createSpeciesTableRow(QTableWidget *table, WildPokemon mon, i
         emit editor->wildMonDataChanged();
     });
 
-    connect(maxLevel, QOverload<int>::of(&QSpinBox::valueChanged), [maxLevel, this](int) {
+    connect(maxLevel, QOverload<int>::of(&QSpinBox::valueChanged), [this](int) {
         editor->saveEncounterTabData();
         emit editor->wildMonDataChanged();
     });

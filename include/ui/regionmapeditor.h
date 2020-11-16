@@ -6,8 +6,6 @@
 #include "regionmaplayoutpixmapitem.h"
 #include "regionmapentriespixmapitem.h"
 #include "regionmap.h"
-#include "history.h"
-#include "historyitem.h"
 
 #include <QMainWindow>
 #include <QGraphicsSceneMouseEvent>
@@ -99,6 +97,7 @@ private:
     bool createCityMap(QString name);
     bool tryInsertNewMapEntry(QString);
 
+    void restoreWindowState();
     void closeEvent(QCloseEvent* event);
 
 private slots:

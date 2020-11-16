@@ -8,6 +8,7 @@
 #include <QComboBox>
 #include <QCheckBox>
 #include <QCursor>
+#include <QUndoGroup>
 
 #include "mapconnection.h"
 #include "metatileselector.h"
@@ -22,6 +23,7 @@
 #include "settings.h"
 #include "movablerect.h"
 #include "cursortilerect.h"
+#include "mapruler.h"
 
 class DraggablePixmapItem;
 class MetatilesPixmapItem;
@@ -45,8 +47,6 @@ public:
     Settings *settings;
     void saveProject();
     void save();
-    void undo();
-    void redo();
     void closeProject();
     bool setMap(QString map_name);
     void saveUiFields();
@@ -65,6 +65,7 @@ public:
     void displayMapBorder();
     void displayMapGrid();
     void displayWildMonTables();
+    void maskNonVisibleConnectionTiles();
 
     void updateMapBorder();
     void updateMapConnections();
@@ -102,7 +103,7 @@ public:
     void updateSelectedEvents();
     void duplicateSelectedEvents();
     void redrawObject(DraggablePixmapItem *item);
-    QList<DraggablePixmapItem *> *getObjects();
+    QList<DraggablePixmapItem *> getObjects();
 
     QGraphicsScene *scene = nullptr;
     QGraphicsPixmapItem *current_view = nullptr;
@@ -110,12 +111,14 @@ public:
     ConnectionPixmapItem* selected_connection_item = nullptr;
     QList<QGraphicsPixmapItem*> connection_items;
     QList<ConnectionPixmapItem*> connection_edit_items;
+    QGraphicsPathItem *connection_mask = nullptr;
     CollisionPixmapItem *collision_item = nullptr;
     QGraphicsItemGroup *events_group = nullptr;
     QList<QGraphicsPixmapItem*> borderItems;
     QList<QGraphicsLineItem*> gridLines;
     MovableRect *playerViewRect = nullptr;
     CursorTileRect *cursorMapTileRect = nullptr;
+    MapRuler *map_ruler = nullptr;
 
     QGraphicsScene *scene_metatiles = nullptr;
     QGraphicsScene *scene_current_metatile_selection = nullptr;
@@ -125,7 +128,7 @@ public:
     MetatileSelector *metatile_selector_item = nullptr;
 
     BorderMetatilesPixmapItem *selected_border_metatiles_item = nullptr;
-    CurrentSelectedMetatilesPixmapItem *scene_current_metatile_selection_item = nullptr;
+    CurrentSelectedMetatilesPixmapItem *current_metatile_selection_item = nullptr;
     MovementPermissionsSelector *movement_permissions_selector_item = nullptr;
 
     QList<DraggablePixmapItem*> *events = nullptr;
@@ -143,6 +146,13 @@ public:
     void objectsView_onMouseRelease(QMouseEvent *event);
 
     int getBorderDrawDistance(int dimension);
+
+    QUndoGroup editGroup; // Manages the undo history for each map
+
+    bool selectingEvent = false;
+
+    void shouldReselectEvents();
+    void scaleMapView(int);
 
 private:
     void setConnectionItemsVisible(bool);
@@ -176,6 +186,7 @@ private slots:
     void onMapStartPaint(QGraphicsSceneMouseEvent *event, MapPixmapItem *item);
     void onMapEndPaint(QGraphicsSceneMouseEvent *event, MapPixmapItem *item);
     void setSmartPathCursorMode(QGraphicsSceneMouseEvent *event);
+    void setStraightPathCursorMode(QGraphicsSceneMouseEvent *event);
     void mouseEvent_map(QGraphicsSceneMouseEvent *event, MapPixmapItem *item);
     void mouseEvent_collision(QGraphicsSceneMouseEvent *event, CollisionPixmapItem *item);
     void onConnectionMoved(MapConnection*);
@@ -187,11 +198,13 @@ private slots:
     void onHoveredMovementPermissionCleared();
     void onHoveredMetatileSelectionChanged(uint16_t);
     void onHoveredMetatileSelectionCleared();
-    void onHoveredMapMetatileChanged(int, int);
+    void onHoveredMapMetatileChanged(const QPoint &pos);
     void onHoveredMapMetatileCleared();
     void onHoveredMapMovementPermissionChanged(int, int);
     void onHoveredMapMovementPermissionCleared();
     void onSelectedMetatilesChanged();
+    void onWheelZoom(int);
+    void onMapRulerLengthChanged();
 
 signals:
     void objectsChanged();
@@ -200,107 +213,6 @@ signals:
     void wildMonDataChanged();
     void warpEventDoubleClicked(QString mapName, QString warpNum);
     void currentMetatilesSelectionChanged();
-    void wheelZoom(int delta);
-};
-
-
-
-class DraggablePixmapItem : public QObject, public QGraphicsPixmapItem {
-    Q_OBJECT
-public:
-    DraggablePixmapItem(QPixmap pixmap): QGraphicsPixmapItem(pixmap) {
-    }
-    Editor *editor = nullptr;
-    Event *event = nullptr;
-    QGraphicsItemAnimation *pos_anim = nullptr;
-    DraggablePixmapItem(Event *event_, Editor *editor_) : QGraphicsPixmapItem(event_->pixmap) {
-        event = event_;
-        editor = editor_;
-        updatePosition();
-    }
-    bool active;
-    int last_x;
-    int last_y;
-    void updatePosition() {
-        int x = event->getPixelX();
-        int y = event->getPixelY();
-        setX(x);
-        setY(y);
-        if (editor->selected_events && editor->selected_events->contains(this)) {
-            setZValue(event->y() + 1);
-        } else {
-            setZValue(event->y());
-        }
-    }
-    void move(int x, int y);
-    void emitPositionChanged() {
-        emit xChanged(event->x());
-        emit yChanged(event->y());
-        emit elevationChanged(event->elevation());
-    }
-    void updatePixmap() {
-        QList<Event*> objects;
-        objects.append(event);
-        event->pixmap = QPixmap();
-        editor->project->loadEventPixmaps(objects);
-        this->updatePosition();
-        editor->redrawObject(this);
-        emit spriteChanged(event->pixmap);
-    }
-    void bind(QComboBox *combo, QString key) {
-        connect(combo, static_cast<void (QComboBox::*)(const QString &)>(&QComboBox::currentTextChanged),
-                this, [this, key](QString value){
-            this->event->put(key, value);
-        });
-        connect(this, &DraggablePixmapItem::onPropertyChanged,
-                this, [combo, key](QString key2, QString value){
-            if (key2 == key) {
-                combo->addItem(value);
-                combo->setCurrentText(value);
-            }
-        });
-    }
-    void bindToUserData(QComboBox *combo, QString key) {
-        connect(combo, static_cast<void (QComboBox::*)(int)>(&QComboBox::currentIndexChanged),
-                this, [this, combo, key](int index) {
-            this->event->put(key, combo->itemData(index).toString());
-        });
-    }
-
-signals:
-    void positionChanged(Event *event);
-    void xChanged(int);
-    void yChanged(int);
-    void elevationChanged(int);
-    void spriteChanged(QPixmap pixmap);
-    void onPropertyChanged(QString key, QString value);
-
-public slots:
-    void set_x(const QString &text) {
-        event->put("x", text);
-        updatePosition();
-    }
-    void set_y(const QString &text) {
-        event->put("y", text);
-        updatePosition();
-    }
-    void set_elevation(const QString &text) {
-        event->put("elevation", text);
-        updatePosition();
-    }
-    void set_sprite(const QString &text) {
-        event->put("sprite", text);
-        updatePixmap();
-    }
-    void set_script(const QString &text) {
-        event->put("script_label", text);
-    }
-
-protected:
-    void mousePressEvent(QGraphicsSceneMouseEvent*);
-    void mouseMoveEvent(QGraphicsSceneMouseEvent*);
-    void mouseReleaseEvent(QGraphicsSceneMouseEvent*);
-    void mouseDoubleClickEvent(QGraphicsSceneMouseEvent*);
 };
 
 #endif // EDITOR_H

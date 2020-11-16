@@ -72,7 +72,7 @@ void log(QString message, LogType type) {
     QFile outFile(getLogPath());
     outFile.open(QIODevice::WriteOnly | QIODevice::Append);
     QTextStream ts(&outFile);
-    ts << message << endl;
+    ts << message << Qt::endl;
 }
 
 QString getLogPath() {
@@ -85,4 +85,15 @@ QString getLogPath() {
 
 QString getMostRecentError() {
     return mostRecentError;
+}
+
+bool cleanupLargeLog() {
+    QFile logFile(getLogPath());
+    if (logFile.size() < 20000000)
+        return false;
+
+    bool removed = logFile.remove();
+    if (removed)
+        logWarn(QString("Previous log file %1 was cleared due to being over 20MB in size.").arg(getLogPath()));
+    return removed;
 }

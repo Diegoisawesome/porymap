@@ -11,6 +11,9 @@
 #include "customattributestable.h"
 #include "scripting.h"
 #include "adjustingstackedwidget.h"
+#include "draggablepixmapitem.h"
+#include "editcommands.h"
+#include "flowlayout.h"
 
 #include <QFileDialog>
 #include <QDirIterator>
@@ -29,9 +32,11 @@
 #include <QProcess>
 #include <QSysInfo>
 #include <QDesktopServices>
-#include <QMatrix>
+#include <QTransform>
 #include <QSignalBlocker>
 #include <QSet>
+
+
 
 MainWindow::MainWindow(QWidget *parent) :
     QMainWindow(parent),
@@ -49,6 +54,8 @@ MainWindow::MainWindow(QWidget *parent) :
     QApplication::setWindowIcon(QIcon(":/icons/porymap-icon-2.ico"));
     ui->setupUi(this);
 
+    cleanupLargeLog();
+
     this->initWindow();
     if (!this->openRecentProject()) {
         // Re-initialize everything to a blank slate if opening the recent project failed.
@@ -62,6 +69,21 @@ MainWindow::~MainWindow()
     delete ui;
 }
 
+void MainWindow::setWindowDisabled(bool disabled) {
+    for (auto action : findChildren<QAction *>())
+        action->setDisabled(disabled);
+    for (auto child : findChildren<QWidget *>(QString(), Qt::FindDirectChildrenOnly))
+        child->setDisabled(disabled);
+    for (auto menu : ui->menuBar->findChildren<QMenu *>(QString(), Qt::FindDirectChildrenOnly))
+        menu->setDisabled(disabled);
+    ui->menuBar->setDisabled(false);
+    ui->menuFile->setDisabled(false);
+    ui->action_Open_Project->setDisabled(false);
+    ui->action_Exit->setDisabled(false);
+    ui->menuHelp->setDisabled(false);
+    ui->actionAbout_Porymap->setDisabled(false);
+}
+
 void MainWindow::initWindow() {
     porymapConfig.load();
     this->initCustomUI();
@@ -71,13 +93,16 @@ void MainWindow::initWindow() {
     this->initMiscHeapObjects();
     this->initMapSortOrder();
     this->restoreWindowState();
+
+    setWindowDisabled(true);
 }
 
 void MainWindow::initExtraShortcuts() {
-    new QShortcut(QKeySequence("Ctrl+Shift+Z"), this, SLOT(redo()));
     new QShortcut(QKeySequence("Ctrl+0"), this, SLOT(resetMapViewScale()));
     new QShortcut(QKeySequence("Ctrl+G"), ui->checkBox_ToggleGrid, SLOT(toggle()));
     new QShortcut(QKeySequence("Ctrl+D"), this, SLOT(duplicate()));
+    new QShortcut(QKeySequence::Delete, this, SLOT(on_toolButton_deleteObject_clicked()));
+    new QShortcut(QKeySequence("Backspace"), this, SLOT(on_toolButton_deleteObject_clicked()));
     ui->actionZoom_In->setShortcuts({QKeySequence("Ctrl++"), QKeySequence("Ctrl+=")});
 }
 
@@ -101,6 +126,19 @@ void MainWindow::initCustomUI() {
     connect(labelCombo, QOverload<int>::of(&QComboBox::currentIndexChanged), [=](int index){
         stack->setCurrentIndex(index);
     });
+
+    // Convert the layout of the map tools' frame into an adjustable FlowLayout
+    FlowLayout *flowLayout = new FlowLayout;
+    flowLayout->setContentsMargins(ui->frame_mapTools->layout()->contentsMargins());
+    flowLayout->setSpacing(ui->frame_mapTools->layout()->spacing());
+    for (auto *child : ui->frame_mapTools->findChildren<QWidget *>(QString(), Qt::FindDirectChildrenOnly)) {
+        flowLayout->addWidget(child);
+        child->setFixedHeight(
+            ui->frame_mapTools->height() - flowLayout->contentsMargins().top() - flowLayout->contentsMargins().bottom()
+        );
+    }
+    delete ui->frame_mapTools->layout();
+    ui->frame_mapTools->setLayout(flowLayout);
 }
 
 void MainWindow::initExtraSignals() {
@@ -116,9 +154,31 @@ void MainWindow::initEditor() {
     connect(this->editor, SIGNAL(warpEventDoubleClicked(QString,QString)), this, SLOT(openWarpMap(QString,QString)));
     connect(this->editor, SIGNAL(currentMetatilesSelectionChanged()), this, SLOT(currentMetatilesSelectionChanged()));
     connect(this->editor, SIGNAL(wildMonDataChanged()), this, SLOT(onWildMonDataChanged()));
-    connect(this->editor, &Editor::wheelZoom, this, &MainWindow::onWheelZoom);
 
     this->loadUserSettings();
+
+    undoAction = editor->editGroup.createUndoAction(this, tr("&Undo"));
+    undoAction->setShortcut(QKeySequence("Ctrl+Z"));
+
+    redoAction = editor->editGroup.createRedoAction(this, tr("&Redo"));
+    redoAction->setShortcuts({QKeySequence("Ctrl+Y"), QKeySequence("Ctrl+Shift+Z")});
+
+    ui->menuEdit->addAction(undoAction);
+    ui->menuEdit->addAction(redoAction);
+
+    QUndoView *undoView = new QUndoView(&editor->editGroup);
+    undoView->setWindowTitle(tr("Edit History"));
+    undoView->setAttribute(Qt::WA_QuitOnClose, false);
+
+    // Show the EditHistory dialog with Ctrl+E
+    QAction *showHistory = new QAction("Show Edit History...");
+    showHistory->setShortcut(QKeySequence("Ctrl+E"));
+    connect(showHistory, &QAction::triggered, [undoView](){ undoView->show(); });
+
+    ui->menuEdit->addAction(showHistory);
+
+    // Toggle an asterisk in the window title when the undo state is changed
+    connect(&editor->editGroup, &QUndoGroup::cleanChanged, this, &MainWindow::showWindowTitle);
 }
 
 void MainWindow::initMiscHeapObjects() {
@@ -160,6 +220,16 @@ void MainWindow::initMapSortOrder() {
     QAction* sortOrder = ui->toolButton_MapSortOrder->menu()->actions()[mapSortOrder];
     ui->toolButton_MapSortOrder->setIcon(sortOrder->icon());
     sortOrder->setChecked(true);
+}
+
+void MainWindow::showWindowTitle() {
+    if (editor->map) {
+        setWindowTitle(QString("%1%2 - %3")
+            .arg(editor->map->hasUnsavedChanges() ? "* " : "")
+            .arg(editor->map->name)
+            .arg(editor->project->getProjectTitle())
+        );
+    }
 }
 
 void MainWindow::setProjectSpecificUIVisibility()
@@ -290,10 +360,10 @@ void MainWindow::loadUserSettings() {
 }
 
 void MainWindow::restoreWindowState() {
-    logInfo("Restoring window geometry from previous session.");
-    QMap<QString, QByteArray> geometry = porymapConfig.getGeometry();
-    this->restoreGeometry(geometry.value("window_geometry"));
-    this->restoreState(geometry.value("window_state"));
+    logInfo("Restoring main window geometry from previous session.");
+    QMap<QString, QByteArray> geometry = porymapConfig.getMainGeometry();
+    this->restoreGeometry(geometry.value("main_window_geometry"));
+    this->restoreState(geometry.value("main_window_state"));
     this->ui->splitter_map->restoreState(geometry.value("map_splitter_state"));
     this->ui->splitter_main->restoreState(geometry.value("main_splitter_state"));
 }
@@ -358,7 +428,7 @@ bool MainWindow::openProject(QString dir) {
     }
 
     if (success) {
-        setWindowTitle(editor->project->getProjectTitle());
+        showWindowTitle();
         this->statusBar()->showMessage(QString("Opened project %1").arg(nativeDir));
     } else {
         this->statusBar()->showMessage(QString("Failed to open project %1").arg(nativeDir));
@@ -377,6 +447,8 @@ bool MainWindow::openProject(QString dir) {
         }
         Scripting::cb_ProjectOpened(dir);
     }
+
+    setWindowDisabled(false);
 
     return success;
 }
@@ -472,7 +544,7 @@ bool MainWindow::setMap(QString map_name, bool scrollTreeView) {
 
     ui->mapList->setExpanded(mapListProxyModel->mapFromSource(mapListIndexes.value(map_name)), true);
 
-    setWindowTitle(map_name + " - " + editor->project->getProjectTitle());
+    showWindowTitle();
 
     connect(editor->map, SIGNAL(mapChanged(Map*)), this, SLOT(onMapChanged(Map *)));
     connect(editor->map, SIGNAL(mapNeedsRedrawing()), this, SLOT(onMapNeedsRedrawing()));
@@ -497,20 +569,12 @@ void MainWindow::refreshMapScene()
 {
     on_mainTabBar_tabBarClicked(ui->mainTabBar->currentIndex());
 
-    double base = editor->scale_base;
-    double exp  = editor->scale_exp;
-
-    int width = static_cast<int>(ceil((editor->scene->width()) * pow(base,exp))) + 2;
-    int height = static_cast<int>(ceil((editor->scene->height()) * pow(base,exp))) + 2;
-
     ui->graphicsView_Map->setScene(editor->scene);
     ui->graphicsView_Map->setSceneRect(editor->scene->sceneRect());
-    ui->graphicsView_Map->setFixedSize(width, height);
     ui->graphicsView_Map->editor = editor;
 
     ui->graphicsView_Connections->setScene(editor->scene);
     ui->graphicsView_Connections->setSceneRect(editor->scene->sceneRect());
-    ui->graphicsView_Connections->setFixedSize(width, height);
 
     ui->graphicsView_Metatiles->setScene(editor->scene_metatiles);
     //ui->graphicsView_Metatiles->setSceneRect(editor->scene_metatiles->sceneRect());
@@ -520,7 +584,7 @@ void MainWindow::refreshMapScene()
     ui->graphicsView_BorderMetatile->setFixedSize(editor->selected_border_metatiles_item->pixmap().width() + 2, editor->selected_border_metatiles_item->pixmap().height() + 2);
 
     ui->graphicsView_currentMetatileSelection->setScene(editor->scene_current_metatile_selection);
-    ui->graphicsView_currentMetatileSelection->setFixedSize(editor->scene_current_metatile_selection_item->pixmap().width() + 2, editor->scene_current_metatile_selection_item->pixmap().height() + 2);
+    ui->graphicsView_currentMetatileSelection->setFixedSize(editor->current_metatile_selection_item->pixmap().width() + 2, editor->current_metatile_selection_item->pixmap().height() + 2);
 
     ui->graphicsView_Collision->setScene(editor->scene_collision_metatiles);
     //ui->graphicsView_Collision->setSceneRect(editor->scene_collision_metatiles->sceneRect());
@@ -558,16 +622,13 @@ void MainWindow::openWarpMap(QString map_name, QString warp_num) {
     QList<Event*> warp_events = editor->map->events["warp_event_group"];
     if (warp_events.length() > warpNum) {
         Event *warp_event = warp_events.at(warpNum);
-        QList<DraggablePixmapItem *> *all_events = editor->getObjects();
-        for (DraggablePixmapItem *item : *all_events) {
+        for (DraggablePixmapItem *item : editor->getObjects()) {
             if (item->event == warp_event) {
                 editor->selected_events->clear();
                 editor->selected_events->append(item);
                 editor->updateSelectedEvents();
             }
         }
-
-        delete all_events;
     }
 }
 
@@ -1124,8 +1185,7 @@ void MainWindow::on_actionNew_Tileset_triggered() {
             }
             newSet->palettes->append(*currentPal);
             newSet->palettePreviews->append(*currentPal);
-            QString fileName;
-            fileName.sprintf("%02d.pal", i);
+            QString fileName = QString("%1.pal").arg(i, 2, 10, QLatin1Char('0'));
             newSet->palettePaths.append(fullDirectoryPath+"/palettes/" + fileName);
         }
         (*newSet->palettes)[0][1] = qRgb(255,0,255);
@@ -1163,16 +1223,22 @@ void MainWindow::on_actionNew_Tileset_triggered() {
 
 void MainWindow::updateTilesetEditor() {
     if (this->tilesetEditor) {
-        this->tilesetEditor->setMap(this->editor->map);
-        this->tilesetEditor->setTilesets(editor->ui->comboBox_PrimaryTileset->currentText(), editor->ui->comboBox_SecondaryTileset->currentText());
+        this->tilesetEditor->update(
+            this->editor->map,
+            editor->ui->comboBox_PrimaryTileset->currentText(),
+            editor->ui->comboBox_SecondaryTileset->currentText()
+        );
     }
 }
 
 void MainWindow::redrawMetatileSelection()
 {
     double scale = pow(3.0, static_cast<double>(porymapConfig.getMetatilesZoom() - 30) / 30.0);
-    ui->graphicsView_currentMetatileSelection->setFixedSize(editor->scene_current_metatile_selection_item->pixmap().width() * scale + 2, editor->scene_current_metatile_selection_item->pixmap().height() * scale + 2);
-    ui->graphicsView_currentMetatileSelection->setSceneRect(0, 0, editor->scene_current_metatile_selection_item->pixmap().width() * scale, editor->scene_current_metatile_selection_item->pixmap().height() * scale);
+    QTransform transform;
+    transform.scale(scale, scale);
+
+    ui->graphicsView_currentMetatileSelection->setTransform(transform);
+    ui->graphicsView_currentMetatileSelection->setFixedSize(editor->current_metatile_selection_item->pixmap().width() * scale + 2, editor->current_metatile_selection_item->pixmap().height() * scale + 2);
 
     QPoint size = editor->metatile_selector_item->getSelectionDimensions();
     if (size.x() == 1 && size.y() == 1) {
@@ -1245,14 +1311,6 @@ void MainWindow::on_action_Save_Project_triggered()
     updateMapList();
 }
 
-void MainWindow::undo() {
-    editor->undo();
-}
-
-void MainWindow::redo() {
-    editor->redo();
-}
-
 void MainWindow::duplicate() {
     editor->duplicateSelectedEvents();
 }
@@ -1310,24 +1368,17 @@ void MainWindow::on_mainTabBar_tabBarClicked(int index)
         if (projectConfig.getEncounterJsonActive())
             editor->saveEncounterTabData();
     }
-}
-
-void MainWindow::on_actionUndo_triggered()
-{
-    undo();
-}
-
-void MainWindow::on_actionRedo_triggered()
-{
-    redo();
+    if (index != 1) {
+        editor->map_ruler->setEnabled(false);
+    }
 }
 
 void MainWindow::on_actionZoom_In_triggered() {
-    scaleMapView(1);
+    editor->scaleMapView(1);
 }
 
 void MainWindow::on_actionZoom_Out_triggered() {
-    scaleMapView(-1);
+    editor->scaleMapView(-1);
 }
 
 void MainWindow::on_actionBetter_Cursors_triggered() {
@@ -1340,6 +1391,9 @@ void MainWindow::on_actionPlayer_View_Rectangle_triggered()
     bool enabled = ui->actionPlayer_View_Rectangle->isChecked();
     porymapConfig.setShowPlayerView(enabled);
     this->editor->settings->playerViewRectEnabled = enabled;
+    if (this->editor->map_item->has_mouse) {
+        this->editor->playerViewRect->setVisible(enabled);
+    }
 }
 
 void MainWindow::on_actionCursor_Tile_Outline_triggered()
@@ -1347,6 +1401,9 @@ void MainWindow::on_actionCursor_Tile_Outline_triggered()
     bool enabled = ui->actionCursor_Tile_Outline->isChecked();
     porymapConfig.setShowCursorTile(enabled);
     this->editor->settings->cursorTileRectEnabled = enabled;
+    if (this->editor->map_item->has_mouse) {
+        this->editor->cursorMapTileRect->setVisibility(enabled);
+    }
 }
 
 void MainWindow::on_actionUse_Encounter_Json_triggered(bool checked)
@@ -1398,39 +1455,8 @@ void MainWindow::on_actionMap_Shift_triggered()
     on_toolButton_Shift_clicked();
 }
 
-void MainWindow::onWheelZoom(int s) {
-    // Don't zoom the map when the user accidentally scrolls while performing a magic fill. (ctrl + middle button click)
-    if (!(QApplication::mouseButtons() & Qt::MiddleButton)) {
-        scaleMapView(s);
-    }
-}
-
-void MainWindow::scaleMapView(int s) {
-    if ((editor->scale_exp + s) <= 5 && (editor->scale_exp + s) >= -2)    // sane limits
-    {
-        if (s == 0)
-        {
-            s = -editor->scale_exp;
-        }
-
-        editor->scale_exp += s;
-
-        double base = editor->scale_base;
-        double exp  = editor->scale_exp;
-        double sfactor = pow(base,s);
-
-        ui->graphicsView_Map->scale(sfactor,sfactor);
-        ui->graphicsView_Connections->scale(sfactor,sfactor);
-
-        int width = static_cast<int>(ceil((editor->scene->width()) * pow(base,exp))) + 2;
-        int height = static_cast<int>(ceil((editor->scene->height()) * pow(base,exp))) + 2;
-        ui->graphicsView_Map->setFixedSize(width, height);
-        ui->graphicsView_Connections->setFixedSize(width, height);
-    }
-}
-
 void MainWindow::resetMapViewScale() {
-    scaleMapView(0);
+    editor->scaleMapView(0);
 }
 
 void MainWindow::addNewEvent(QString event_type)
@@ -1438,7 +1464,6 @@ void MainWindow::addNewEvent(QString event_type)
     if (editor && editor->project) {
         DraggablePixmapItem *object = editor->addNewEvent(event_type);
         if (object) {
-            updateObjects();
             editor->selectMapEvent(object, false);
         } else {
             QMessageBox msgBox(this);
@@ -1469,7 +1494,7 @@ void MainWindow::updateObjects() {
     bool hasBGs = false;
     bool hasHealspots = false;
 
-    for (DraggablePixmapItem *item : *editor->getObjects())
+    for (DraggablePixmapItem *item : editor->getObjects())
     {
         QString event_type = item->event->get("event_type");
 
@@ -1520,18 +1545,17 @@ void MainWindow::updateObjects() {
 
 // Should probably just pass layout and let the editor work it out
 void MainWindow::updateSelectedObjects() {
-    QList<DraggablePixmapItem *> *all_events = editor->getObjects();
-    QList<DraggablePixmapItem *> *events = nullptr;
+    QList<DraggablePixmapItem *> all_events = editor->getObjects();
+    QList<DraggablePixmapItem *> events;
 
     if (editor->selected_events && editor->selected_events->length()) {
-        events = editor->selected_events;
+        events = *editor->selected_events;
     } else {
-        events = new QList<DraggablePixmapItem*>;
-        if (all_events && all_events->length()) {
-            DraggablePixmapItem *selectedEvent = all_events->first();
+        if (all_events.length()) {
+            DraggablePixmapItem *selectedEvent = all_events.first();
             editor->selected_events->append(selectedEvent);
             editor->redrawObject(selectedEvent);
-            events->append(selectedEvent);
+            events.append(selectedEvent);
         }
     }
 
@@ -1543,20 +1567,28 @@ void MainWindow::updateSelectedObjects() {
     bool quantityEnabled = projectConfig.getHiddenItemQuantityEnabled();
     bool underfootEnabled = projectConfig.getHiddenItemRequiresItemfinderEnabled();
     bool respawnDataEnabled = projectConfig.getHealLocationRespawnDataEnabled();
-    for (DraggablePixmapItem *item : *events) {
+    for (DraggablePixmapItem *item : events) {
         EventPropertiesFrame *frame = new EventPropertiesFrame(item->event);
 //        frame->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Preferred);
 
-        QSpinBox *x = frame->ui->spinBox_x;
-        QSpinBox *y = frame->ui->spinBox_y;
-        QSpinBox *z = frame->ui->spinBox_z;
+        NoScrollSpinBox *x = frame->ui->spinBox_x;
+        NoScrollSpinBox *y = frame->ui->spinBox_y;
+        NoScrollSpinBox *z = frame->ui->spinBox_z;
 
         x->setValue(item->event->x());
-        connect(x, SIGNAL(valueChanged(QString)), item, SLOT(set_x(QString)));
+        connect(x, QOverload<int>::of(&QSpinBox::valueChanged), [this, item, x](int value) {
+            int delta = value - item->event->x();
+            if (delta)
+                editor->map->editHistory.push(new EventMove(QList<Event *>() << item->event, delta, 0, x->getActionId()));
+        });
         connect(item, SIGNAL(xChanged(int)), x, SLOT(setValue(int)));
 
         y->setValue(item->event->y());
-        connect(y, SIGNAL(valueChanged(QString)), item, SLOT(set_y(QString)));
+        connect(y, QOverload<int>::of(&QSpinBox::valueChanged), [this, item, y](int value) {
+            int delta = value - item->event->y();
+            if (delta)
+                editor->map->editHistory.push(new EventMove(QList<Event *>() << item->event, 0, delta, y->getActionId()));
+        });
         connect(item, SIGNAL(yChanged(int)), y, SLOT(setValue(int)));
 
         z->setValue(item->event->elevation());
@@ -1571,7 +1603,7 @@ void MainWindow::updateSelectedObjects() {
         else { event_offs = 1; }
         frame->ui->label_name->setText(QString("%1 Id").arg(event_type));
 
-        if (events->count() == 1)
+        if (events.count() == 1)
         {
             frame->ui->spinBox_index->setValue(editor->project->getMap(map_name)->events.value(event_group_type).indexOf(item->event) + event_offs);
             frame->ui->spinBox_index->setMinimum(event_offs);
@@ -1893,9 +1925,9 @@ void MainWindow::updateSelectedObjects() {
 
     isProgrammaticEventTabChange = true;
 
-    if (events->length() == 1)
+    if (events.length() == 1)
     {
-        QString event_group_type = (*events)[0]->event->get("event_group_type");
+        QString event_group_type = events[0]->event->get("event_group_type");
 
         if (event_group_type == "object_event_group") {
             scrollTarget = ui->scrollArea_Objects;
@@ -1924,7 +1956,7 @@ void MainWindow::updateSelectedObjects() {
         }
         ui->tabWidget_EventType->removeTab(ui->tabWidget_EventType->indexOf(ui->tab_Multiple));
     }
-    else if (events->length() > 1)
+    else if (events.length() > 1)
     {
         ui->tabWidget_EventType->addTab(ui->tab_Multiple, "Multiple");
         ui->tabWidget_EventType->setCurrentWidget(ui->tab_Multiple);
@@ -1932,7 +1964,7 @@ void MainWindow::updateSelectedObjects() {
 
     isProgrammaticEventTabChange = false;
 
-    if (events->length() != 0)
+    if (events.length() != 0)
     {
         if (target->children().length())
         {
@@ -1995,96 +2027,45 @@ QString MainWindow::getEventGroupFromTabWidget(QWidget *tab)
     return ret;
 }
 
-void MainWindow::eventTabChanged(int index)
-{
-    if (!isProgrammaticEventTabChange && editor->map != nullptr)
-    {
+void MainWindow::eventTabChanged(int index) {
+    if (editor->map) {
         QString group = getEventGroupFromTabWidget(ui->tabWidget_EventType->widget(index));
         DraggablePixmapItem *selectedEvent = nullptr;
 
-        if (group == "object_event_group")
-        {
-            if (selectedObject == nullptr && editor->map->events.value(group).count())
-            {
-                Event *event = editor->map->events.value(group).at(0);
-                for (QGraphicsItem *child : editor->events_group->childItems()) {
-                    DraggablePixmapItem *item = static_cast<DraggablePixmapItem *>(child);
-                    if (item->event == event) {
-                        selectedObject = item;
-                        break;
-                    }
-                }
-            }
-
+        if (group == "object_event_group") {
             selectedEvent = selectedObject;
+            ui->newEventToolButton->setDefaultAction(ui->newEventToolButton->newObjectAction);
         }
-        else if (group == "warp_event_group")
-        {
-            if (selectedWarp == nullptr && editor->map->events.value(group).count())
-            {
-                Event *event = editor->map->events.value(group).at(0);
-                for (QGraphicsItem *child : editor->events_group->childItems()) {
-                    DraggablePixmapItem *item = static_cast<DraggablePixmapItem *>(child);
-                    if (item->event == event) {
-                        selectedWarp = item;
-                        break;
-                    }
-                }
-            }
-
+        else if (group == "warp_event_group") {
             selectedEvent = selectedWarp;
+            ui->newEventToolButton->setDefaultAction(ui->newEventToolButton->newWarpAction);
         }
-        else if (group == "coord_event_group")
-        {
-            if (selectedTrigger == nullptr && editor->map->events.value(group).count())
-            {
-                Event *event = editor->map->events.value(group).at(0);
-                for (QGraphicsItem *child : editor->events_group->childItems()) {
-                    DraggablePixmapItem *item = static_cast<DraggablePixmapItem *>(child);
-                    if (item->event == event) {
-                        selectedTrigger = item;
-                        break;
-                    }
-                }
-            }
-
+        else if (group == "coord_event_group") {
             selectedEvent = selectedTrigger;
+            ui->newEventToolButton->setDefaultAction(ui->newEventToolButton->newTriggerAction);
         }
-        else if (group == "bg_event_group")
-        {
-            if (selectedBG == nullptr && editor->map->events.value(group).count())
-            {
-                Event *event = editor->map->events.value(group).at(0);
-                for (QGraphicsItem *child : editor->events_group->childItems()) {
-                    DraggablePixmapItem *item = static_cast<DraggablePixmapItem *>(child);
-                    if (item->event == event) {
-                        selectedBG = item;
-                        break;
-                    }
-                }
-            }
-
+        else if (group == "bg_event_group") {
             selectedEvent = selectedBG;
+            ui->newEventToolButton->setDefaultAction(ui->newEventToolButton->newSignAction);
         }
-        else if (group == "heal_event_group")
-        {
-            if (selectedHealspot == nullptr && editor->map->events.value(group).count())
-            {
-                Event *event = editor->map->events.value(group).at(0);
-                for (QGraphicsItem *child : editor->events_group->childItems()) {
-                    DraggablePixmapItem *item = static_cast<DraggablePixmapItem *>(child);
-                    if (item->event == event) {
-                        selectedHealspot = item;
-                        break;
-                    }
-                }
-            }
-
+        else if (group == "heal_event_group") {
             selectedEvent = selectedHealspot;
         }
 
-        if (selectedEvent != nullptr)
-            editor->selectMapEvent(selectedEvent);
+        if (!isProgrammaticEventTabChange) {
+            if (!selectedEvent && editor->map->events.value(group).count()) {
+                Event *event = editor->map->events.value(group).at(0);
+                for (QGraphicsItem *child : editor->events_group->childItems()) {
+                    DraggablePixmapItem *item = static_cast<DraggablePixmapItem *>(child);
+                    if (item->event == event) {
+                        selectedEvent = item;
+                        break;
+                    }
+                }
+            }
+
+            if (selectedEvent) editor->selectMapEvent(selectedEvent);
+        }
     }
 
     isProgrammaticEventTabChange = false;
@@ -2114,19 +2095,24 @@ void MainWindow::on_horizontalSlider_CollisionTransparency_valueChanged(int valu
     this->editor->collision_item->draw(true);
 }
 
-// TODO: connect this to the DEL key when undo/redo history is extended to events
-void MainWindow::on_toolButton_deleteObject_clicked()
-{
+void MainWindow::on_toolButton_deleteObject_clicked() {
+    if (ui->mainTabBar->currentIndex() != 1) {
+        // do not delete an event when not on event tab
+        return;
+    }
     if (editor && editor->selected_events) {
         if (editor->selected_events->length()) {
-            DraggablePixmapItem *next_selected_event = nullptr;
+            DraggablePixmapItem *nextSelectedEvent = nullptr;
+            QList<Event *> selectedEvents;
+            int numEvents = editor->selected_events->length();
+            int numDeleted = 0;
             for (DraggablePixmapItem *item : *editor->selected_events) {
                 QString event_group = item->event->get("event_group_type");
                 if (event_group != "heal_event_group") {
                     // Get the index for the event that should be selected after this event has been deleted.
                     // If it's at the end of the list, select the previous event, otherwise select the next one.
                     // Don't bother getting the event to select if there are still more events to delete
-                    if (editor->selected_events->length() == 1) {
+                    if (++numDeleted == numEvents) {
                         int index = editor->map->events.value(event_group).indexOf(item->event);
                         if (index != editor->map->events.value(event_group).size() - 1)
                             index++;
@@ -2138,26 +2124,20 @@ void MainWindow::on_toolButton_deleteObject_clicked()
                         for (QGraphicsItem *child : editor->events_group->childItems()) {
                             DraggablePixmapItem *event_item = static_cast<DraggablePixmapItem *>(child);
                             if (event_item->event == event) {
-                                next_selected_event = event_item;
+                                nextSelectedEvent = event_item;
                                 break;
                             }
                         }
                     }
-                    editor->deleteEvent(item->event);
-                    if (editor->scene->items().contains(item)) {
-                        editor->scene->removeItem(item);
-                    }
-                    editor->selected_events->removeOne(item);
+                    item->event->setPixmapItem(item);
+                    selectedEvents.append(item->event);
                 }
                 else { // don't allow deletion of heal locations
                     logWarn(QString("Cannot delete event of type '%1'").arg(item->event->get("event_type")));
                 }
             }
-            if (next_selected_event) {
-                editor->selectMapEvent(next_selected_event);
-            }
-            else {
-                updateObjects();
+            if (numDeleted) {
+                editor->map->editHistory.push(new EventDelete(editor, editor->map, selectedEvents, nextSelectedEvent ? nextSelectedEvent->event : nullptr));
             }
         }
     }
@@ -2181,9 +2161,9 @@ void MainWindow::on_toolButton_Paint_clicked()
     if (ui->tabWidget_2->currentIndex() == 0)
         editor->cursorMapTileRect->stopSingleTileMode();
 
-    ui->scrollArea->setHorizontalScrollBarPolicy(Qt::ScrollBarAsNeeded);
-    ui->scrollArea->setVerticalScrollBarPolicy(Qt::ScrollBarAsNeeded);
-    QScroller::ungrabGesture(ui->scrollArea);
+    ui->graphicsView_Map->setHorizontalScrollBarPolicy(Qt::ScrollBarAsNeeded);
+    ui->graphicsView_Map->setVerticalScrollBarPolicy(Qt::ScrollBarAsNeeded);
+    QScroller::ungrabGesture(ui->graphicsView_Map);
 
     checkToolButtons();
 }
@@ -2198,9 +2178,9 @@ void MainWindow::on_toolButton_Select_clicked()
     editor->settings->mapCursor = QCursor();
     editor->cursorMapTileRect->setSingleTileMode();
 
-    ui->scrollArea->setHorizontalScrollBarPolicy(Qt::ScrollBarAsNeeded);
-    ui->scrollArea->setVerticalScrollBarPolicy(Qt::ScrollBarAsNeeded);
-    QScroller::ungrabGesture(ui->scrollArea);
+    ui->graphicsView_Map->setHorizontalScrollBarPolicy(Qt::ScrollBarAsNeeded);
+    ui->graphicsView_Map->setVerticalScrollBarPolicy(Qt::ScrollBarAsNeeded);
+    QScroller::ungrabGesture(ui->graphicsView_Map);
 
     checkToolButtons();
 }
@@ -2215,9 +2195,9 @@ void MainWindow::on_toolButton_Fill_clicked()
     editor->settings->mapCursor = QCursor(QPixmap(":/icons/fill_color_cursor.ico"), 10, 10);
     editor->cursorMapTileRect->setSingleTileMode();
 
-    ui->scrollArea->setHorizontalScrollBarPolicy(Qt::ScrollBarAsNeeded);
-    ui->scrollArea->setVerticalScrollBarPolicy(Qt::ScrollBarAsNeeded);
-    QScroller::ungrabGesture(ui->scrollArea);
+    ui->graphicsView_Map->setHorizontalScrollBarPolicy(Qt::ScrollBarAsNeeded);
+    ui->graphicsView_Map->setVerticalScrollBarPolicy(Qt::ScrollBarAsNeeded);
+    QScroller::ungrabGesture(ui->graphicsView_Map);
 
     checkToolButtons();
 }
@@ -2232,9 +2212,9 @@ void MainWindow::on_toolButton_Dropper_clicked()
     editor->settings->mapCursor = QCursor(QPixmap(":/icons/pipette_cursor.ico"), 10, 10);
     editor->cursorMapTileRect->setSingleTileMode();
 
-    ui->scrollArea->setHorizontalScrollBarPolicy(Qt::ScrollBarAsNeeded);
-    ui->scrollArea->setVerticalScrollBarPolicy(Qt::ScrollBarAsNeeded);
-    QScroller::ungrabGesture(ui->scrollArea);
+    ui->graphicsView_Map->setHorizontalScrollBarPolicy(Qt::ScrollBarAsNeeded);
+    ui->graphicsView_Map->setVerticalScrollBarPolicy(Qt::ScrollBarAsNeeded);
+    QScroller::ungrabGesture(ui->graphicsView_Map);
 
     checkToolButtons();
 }
@@ -2249,9 +2229,9 @@ void MainWindow::on_toolButton_Move_clicked()
     editor->settings->mapCursor = QCursor(QPixmap(":/icons/move.ico"), 7, 7);
     editor->cursorMapTileRect->setSingleTileMode();
 
-    ui->scrollArea->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
-    ui->scrollArea->setVerticalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
-    QScroller::grabGesture(ui->scrollArea, QScroller::LeftMouseButtonGesture);
+    ui->graphicsView_Map->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+    ui->graphicsView_Map->setVerticalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+    QScroller::grabGesture(ui->graphicsView_Map, QScroller::LeftMouseButtonGesture);
 
     checkToolButtons();
 }
@@ -2266,19 +2246,24 @@ void MainWindow::on_toolButton_Shift_clicked()
     editor->settings->mapCursor = QCursor(QPixmap(":/icons/shift_cursor.ico"), 10, 10);
     editor->cursorMapTileRect->setSingleTileMode();
 
-    ui->scrollArea->setHorizontalScrollBarPolicy(Qt::ScrollBarAsNeeded);
-    ui->scrollArea->setVerticalScrollBarPolicy(Qt::ScrollBarAsNeeded);
-    QScroller::ungrabGesture(ui->scrollArea);
+    ui->graphicsView_Map->setHorizontalScrollBarPolicy(Qt::ScrollBarAsNeeded);
+    ui->graphicsView_Map->setVerticalScrollBarPolicy(Qt::ScrollBarAsNeeded);
+    QScroller::ungrabGesture(ui->graphicsView_Map);
 
     checkToolButtons();
 }
 
 void MainWindow::checkToolButtons() {
     QString edit_mode;
-    if (ui->mainTabBar->currentIndex() == 0)
+    if (ui->mainTabBar->currentIndex() == 0) {
         edit_mode = editor->map_edit_mode;
-    else
+    } else {
         edit_mode = editor->obj_edit_mode;
+        if (edit_mode == "select" && editor->map_ruler)
+            editor->map_ruler->setEnabled(true);
+        else if (editor->map_ruler)
+            editor->map_ruler->setEnabled(false);
+    }
 
     ui->toolButton_Paint->setChecked(edit_mode == "paint");
     ui->toolButton_Select->setChecked(edit_mode == "select");
@@ -2317,8 +2302,7 @@ void MainWindow::onLoadMapRequested(QString mapName, QString fromMapName) {
     editor->setSelectedConnectionFromMap(fromMapName);
 }
 
-void MainWindow::onMapChanged(Map *map) {
-    map->layout->has_unsaved_changes = true;
+void MainWindow::onMapChanged(Map *) {
     updateMapList();
 }
 
@@ -2359,10 +2343,12 @@ void MainWindow::on_action_Export_Map_Image_triggered() {
 }
 
 void MainWindow::on_actionExport_Stitched_Map_Image_triggered() {
-   showExportMapImageWindow(true);
+    showExportMapImageWindow(true);
 }
 
 void MainWindow::showExportMapImageWindow(bool stitchMode) {
+    if (!editor->project) return;
+
     if (this->mapImageExporter)
         delete this->mapImageExporter;
 
@@ -2514,10 +2500,23 @@ void MainWindow::on_pushButton_ChangeDimensions_clicked()
     form.addRow(errorLabel);
 
     if (dialog.exec() == QDialog::Accepted) {
-        editor->map->setDimensions(widthSpinBox->value(), heightSpinBox->value());
-        editor->map->setBorderDimensions(bwidthSpinBox->value(), bheightSpinBox->value());
-        editor->map->commit();
-        onMapNeedsRedrawing();
+        Map *map = editor->map;
+        Blockdata *oldMetatiles = map->layout->blockdata->copy();
+        Blockdata *oldBorder = map->layout->border->copy();
+        QSize oldMapDimensions(map->getWidth(), map->getHeight());
+        QSize oldBorderDimensions(map->getBorderWidth(), map->getBorderHeight());
+        QSize newMapDimensions(widthSpinBox->value(), heightSpinBox->value());
+        QSize newBorderDimensions(bwidthSpinBox->value(), bheightSpinBox->value());
+        if (oldMapDimensions != newMapDimensions || oldBorderDimensions != newBorderDimensions) {
+            editor->map->setDimensions(newMapDimensions.width(), newMapDimensions.height());
+            editor->map->setBorderDimensions(newBorderDimensions.width(), newBorderDimensions.height());
+            editor->map->editHistory.push(new ResizeMap(map, 
+                oldMapDimensions, newMapDimensions,
+                oldMetatiles, map->layout->blockdata->copy(),
+                oldBorderDimensions, newBorderDimensions,
+                oldBorder, map->layout->border->copy()
+            ));
+        }
     }
 }
 
@@ -2526,9 +2525,9 @@ void MainWindow::on_checkBox_smartPaths_stateChanged(int selected)
     bool enabled = selected == Qt::Checked;
     editor->settings->smartPathsEnabled = enabled;
     if (enabled) {
-        editor->cursorMapTileRect->setSmartPathMode();
+        editor->cursorMapTileRect->setSmartPathMode(true);
     } else {
-        editor->cursorMapTileRect->setNormalPathMode();
+        editor->cursorMapTileRect->setSmartPathMode(false);
     }
 }
 
@@ -2544,7 +2543,6 @@ void MainWindow::on_actionTileset_Editor_triggered()
         this->tilesetEditor = new TilesetEditor(this->editor->project, this->editor->map, this);
         connect(this->tilesetEditor, SIGNAL(tilesetsSaved(QString, QString)), this, SLOT(onTilesetsSaved(QString, QString)));
         connect(this->tilesetEditor, &QObject::destroyed, [=](QObject *) { this->tilesetEditor = nullptr; });
-        this->tilesetEditor->setAttribute(Qt::WA_DeleteOnClose);
     }
 
     if (!this->tilesetEditor->isVisible()) {
@@ -2599,11 +2597,12 @@ void MainWindow::on_actionThemes_triggered()
 
     QDialogButtonBox buttonBox(QDialogButtonBox::Apply | QDialogButtonBox::Close, Qt::Horizontal, &themeSelectorWindow);
     form.addRow(&buttonBox);
-    connect(&buttonBox, &QDialogButtonBox::clicked, [&themeSelectorWindow, &buttonBox, themeSelector, this](QAbstractButton *button){
+    connect(&buttonBox, &QDialogButtonBox::clicked, [&buttonBox, themeSelector, this](QAbstractButton *button){
         if (button == buttonBox.button(QDialogButtonBox::Apply)) {
             QString theme = themeSelector->currentText();
             porymapConfig.setTheme(theme);
             this->setTheme(theme);
+            editor->maskNonVisibleConnectionTiles();
         }
     });
     connect(&buttonBox, SIGNAL(rejected()), &themeSelectorWindow, SLOT(reject()));
@@ -2651,21 +2650,20 @@ void MainWindow::on_horizontalSlider_MetatileZoom_valueChanged(int value) {
     porymapConfig.setMetatilesZoom(value);
     double scale = pow(3.0, static_cast<double>(value - 30) / 30.0);
 
-    QMatrix matrix;
-    matrix.scale(scale, scale);
+    QTransform transform;
+    transform.scale(scale, scale);
     QSize size(editor->metatile_selector_item->pixmap().width(), 
                editor->metatile_selector_item->pixmap().height());
     size *= scale;
 
     ui->graphicsView_Metatiles->setResizeAnchor(QGraphicsView::NoAnchor);
-    ui->graphicsView_Metatiles->setMatrix(matrix);
+    ui->graphicsView_Metatiles->setTransform(transform);
     ui->graphicsView_Metatiles->setFixedSize(size.width() + 2, size.height() + 2);
 
-    ui->graphicsView_BorderMetatile->setMatrix(matrix);
+    ui->graphicsView_BorderMetatile->setTransform(transform);
     ui->graphicsView_BorderMetatile->setFixedSize(ceil(static_cast<double>(editor->selected_border_metatiles_item->pixmap().width()) * scale) + 2,
                                                   ceil(static_cast<double>(editor->selected_border_metatiles_item->pixmap().height()) * scale) + 2);
 
-    ui->graphicsView_currentMetatileSelection->setMatrix(matrix);
     redrawMetatileSelection();
 }
 
@@ -2685,7 +2683,6 @@ void MainWindow::on_actionRegion_Map_Editor_triggered() {
             return;
         }
         connect(this->regionMapEditor, &QObject::destroyed, [=](QObject *) { this->regionMapEditor = nullptr; });
-        this->regionMapEditor->setAttribute(Qt::WA_DeleteOnClose);
     }
 
     if (!this->regionMapEditor->isVisible()) {
@@ -2709,7 +2706,7 @@ void MainWindow::closeSupplementaryWindows() {
 }
 
 void MainWindow::closeEvent(QCloseEvent *event) {
-    if (projectHasUnsavedChanges || editor->map->hasUnsavedChanges()) {
+    if (projectHasUnsavedChanges || (editor->map && editor->map->hasUnsavedChanges())) {
         QMessageBox::StandardButton result = QMessageBox::question(
             this, "porymap", "The project has been modified, save changes?",
             QMessageBox::No | QMessageBox::Yes | QMessageBox::Cancel, QMessageBox::Yes);
@@ -2724,7 +2721,7 @@ void MainWindow::closeEvent(QCloseEvent *event) {
         }
     }
 
-    porymapConfig.setGeometry(
+    porymapConfig.setMainGeometry(
         this->saveGeometry(),
         this->saveState(),
         this->ui->splitter_map->saveState(),

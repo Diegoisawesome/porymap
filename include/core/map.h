@@ -2,13 +2,12 @@
 #define MAP_H
 
 #include "blockdata.h"
-#include "history.h"
-#include "historyitem.h"
 #include "mapconnection.h"
 #include "maplayout.h"
 #include "tileset.h"
 #include "event.h"
 
+#include <QUndoStack>
 #include <QPixmap>
 #include <QObject>
 #include <QGraphicsPixmapItem>
@@ -21,11 +20,16 @@
 // porymap will reflect changes to it, but the value is hard-coded in the projects at the moment
 #define BORDER_DISTANCE 7
 
+class MapPixmapItem;
+class CollisionPixmapItem;
+class BorderMetatilesPixmapItem;
+
 class Map : public QObject
 {
     Q_OBJECT
 public:
     explicit Map(QObject *parent = nullptr);
+    ~Map();
 
 public:
     QString name;
@@ -55,7 +59,6 @@ public:
     QPixmap collision_pixmap;
     QImage image;
     QPixmap pixmap;
-    History<HistoryItem*> metatileHistory;
     QMap<QString, QList<Event*>> events;
     QList<MapConnection*> connections;
     QList<int> metatileLayerOrder;
@@ -81,9 +84,6 @@ public:
     void floodFillCollisionElevation(int x, int y, uint16_t collision, uint16_t elevation);
     void _floodFillCollisionElevation(int x, int y, uint16_t collision, uint16_t elevation);
     void magicFillCollisionElevation(int x, int y, uint16_t collision, uint16_t elevation);
-    void undo();
-    void redo();
-    void commit();
     QList<Event*> getAllEvents();
     void removeEvent(Event*);
     void addEvent(Event*);
@@ -94,12 +94,27 @@ public:
     void cacheBorder();
     bool hasUnsavedChanges();
 
+    // for memory management
+    QVector<Event *> ownedEvents;
+
+    MapPixmapItem *mapItem = nullptr;
+    void setMapItem(MapPixmapItem *item) { mapItem = item; }
+
+    CollisionPixmapItem *collisionItem = nullptr;
+    void setCollisionItem(CollisionPixmapItem *item) { collisionItem = item; }
+
+    BorderMetatilesPixmapItem *borderItem = nullptr;
+    void setBorderItem(BorderMetatilesPixmapItem *item) { borderItem = item; }
+
+    QUndoStack editHistory;
+
 private:
     void setNewDimensionsBlockdata(int newWidth, int newHeight);
     void setNewBorderDimensionsBlockdata(int newWidth, int newHeight);
 
 signals:
     void mapChanged(Map *map);
+    void mapDimensionsChanged(const QSize &size);
     void mapNeedsRedrawing();
 };
 

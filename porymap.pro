@@ -18,7 +18,6 @@ SOURCES += src/core/block.cpp \
     src/core/blockdata.cpp \
     src/core/event.cpp \
     src/core/heallocation.cpp \
-    src/core/historyitem.cpp \
     src/core/imageexport.cpp \
     src/core/map.cpp \
     src/core/maplayout.cpp \
@@ -30,9 +29,11 @@ SOURCES += src/core/block.cpp \
     src/core/tileset.cpp \
     src/core/regionmap.cpp \
     src/core/wildmoninfo.cpp \
+    src/core/editcommands.cpp \
     src/lib/orderedjson.cpp \
     src/mainwindow_scriptapi.cpp \
     src/ui/aboutporymap.cpp \
+    src/ui/draggablepixmapitem.cpp \
     src/ui/bordermetatilespixmapitem.cpp \
     src/ui/collisionpixmapitem.cpp \
     src/ui/connectionpixmapitem.cpp \
@@ -67,6 +68,9 @@ SOURCES += src/core/block.cpp \
     src/ui/regionmapeditor.cpp \
     src/ui/newmappopup.cpp \
     src/ui/mapimageexporter.cpp \
+    src/ui/newtilesetdialog.cpp \
+    src/ui/flowlayout.cpp \
+    src/ui/mapruler.cpp \
     src/config.cpp \
     src/editor.cpp \
     src/main.cpp \
@@ -74,15 +78,13 @@ SOURCES += src/core/block.cpp \
     src/project.cpp \
     src/scripting.cpp \
     src/settings.cpp \
-    src/log.cpp \
-    src/ui/newtilesetdialog.cpp
+    src/log.cpp
 
 HEADERS  += include/core/block.h \
     include/core/blockdata.h \
     include/core/event.h \
     include/core/heallocation.h \
     include/core/history.h \
-    include/core/historyitem.h \
     include/core/imageexport.h \
     include/core/map.h \
     include/core/mapconnection.h \
@@ -95,9 +97,11 @@ HEADERS  += include/core/block.h \
     include/core/tileset.h \
     include/core/regionmap.h \
     include/core/wildmoninfo.h \
+    include/core/editcommands.h \
     include/lib/orderedmap.h \
     include/lib/orderedjson.h \
     include/ui/aboutporymap.h \
+    include/ui/draggablepixmapitem.h \
     include/ui/bordermetatilespixmapitem.h \
     include/ui/collisionpixmapitem.h \
     include/ui/connectionpixmapitem.h \
@@ -132,15 +136,17 @@ HEADERS  += include/core/block.h \
     include/ui/regionmapeditor.h \
     include/ui/newmappopup.h \
     include/ui/mapimageexporter.h \
+    include/ui/newtilesetdialog.h \
+    include/ui/overlay.h \
+    include/ui/flowlayout.h \
+    include/ui/mapruler.h \
     include/config.h \
     include/editor.h \
     include/mainwindow.h \
     include/project.h \
     include/scripting.h \
     include/settings.h \
-    include/log.h \
-    include/ui/newtilesetdialog.h \
-    include/ui/overlay.h
+    include/log.h
 
 FORMS    += forms/mainwindow.ui \
     forms/eventpropertiesframe.ui \
